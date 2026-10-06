@@ -1,0 +1,27 @@
+{
+  "name": "pulseguard-ai",
+  "version": "1.0.0",
+  "description": "PulseGuard AI - Secure Real-Time Video & Audio Communication Platform",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "build": "npm run build --prefix client",
+    "server": "node server/index.js",
+    "client": "npm run dev --prefix client",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "install:all": "npm install --prefix server && npm install --prefix client"
+  },
+  "keywords": [
+    "webrtc",
+    "socket.io",
+    "pulseguard",
+    "ai-security",
+    "liveness-detection",
+    "deepfake-defense"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

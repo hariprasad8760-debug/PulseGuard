@@ -1,71 +1,80 @@
 import React, { useState } from 'react';
 import Header from './components/Header';
-import HomeScreen from './components/HomeScreen';
+import Footer from './components/Footer';
+import HomePage from './pages/HomePage';
+import HowItWorksPage from './pages/HowItWorksPage';
+import AboutPage from './pages/AboutPage';
+import SettingsPage from './pages/SettingsPage';
 import CallScreen from './components/CallScreen';
-import AboutModal from './components/AboutModal';
-import SettingsModal from './components/SettingsModal';
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState('home'); // 'home' | 'call'
+  const [currentPage, setCurrentPage] = useState('home'); // 'home' | 'security' | 'how-it-works' | 'about' | 'settings'
+  const [currentScreen, setCurrentScreen] = useState('page'); // 'page' | 'call'
   const [roomData, setRoomData] = useState(null); // { roomCode, userName, isHost }
-  const [isAboutOpen, setIsAboutOpen] = useState(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const handleEnterRoom = (data) => {
     setRoomData(data);
     setCurrentScreen('call');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleLeaveCall = () => {
     setRoomData(null);
-    setCurrentScreen('home');
+    setCurrentScreen('page');
+    setCurrentPage('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleHomeClick = () => {
+  const handleNavigate = (pageId) => {
     if (currentScreen === 'call') {
-      const confirmLeave = window.confirm('Are you sure you want to leave the ongoing call?');
+      const confirmLeave = window.confirm('You are in an active video call. Are you sure you want to leave the room?');
       if (confirmLeave) {
         handleLeaveCall();
+        setCurrentPage(pageId);
       }
     } else {
-      setCurrentScreen('home');
+      setCurrentPage(pageId);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
   return (
-    <div className="min-h-screen bg-white flex flex-col selection:bg-deepsea-100 selection:text-deepsea-900">
-      {/* Top Header */}
+    <div className={`${
+      currentScreen === 'call' ? 'h-screen w-screen overflow-hidden bg-slate-950' : 'min-h-screen bg-white'
+    } flex flex-col selection:bg-deepsea-100 selection:text-deepsea-900 font-sans text-slate-900`}>
+      {/* Global Navigation Header (shown in video call and across pages) */}
       <Header
-        currentScreen={currentScreen}
-        onHomeClick={handleHomeClick}
-        onSettingsClick={() => setIsSettingsOpen(true)}
-        onAboutClick={() => setIsAboutOpen(true)}
+        currentPage={currentScreen === 'call' ? 'call' : currentPage}
+        onNavigate={handleNavigate}
       />
 
-      {/* Main Viewport */}
-      <main className="flex-1 flex flex-col">
-        {currentScreen === 'home' && (
-          <HomeScreen onEnterRoom={handleEnterRoom} />
-        )}
-
-        {currentScreen === 'call' && roomData && (
+      {/* Main Content Area */}
+      <main className={`flex-1 flex flex-col ${currentScreen === 'call' ? 'overflow-hidden' : ''}`}>
+        {currentScreen === 'call' && roomData ? (
           <CallScreen
             roomData={roomData}
             onLeaveCall={handleLeaveCall}
           />
+        ) : (
+          <>
+            {currentPage === 'home' && (
+              <HomePage onEnterRoom={handleEnterRoom} />
+            )}
+            {currentPage === 'how-it-works' && (
+              <HowItWorksPage onNavigate={handleNavigate} />
+            )}
+            {(currentPage === 'about' || currentPage === 'security') && (
+              <AboutPage />
+            )}
+            {currentPage === 'settings' && (
+              <SettingsPage />
+            )}
+          </>
         )}
       </main>
 
-      {/* Modals */}
-      <AboutModal
-        isOpen={isAboutOpen}
-        onClose={() => setIsAboutOpen(false)}
-      />
-
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
+      {/* Footer (hidden during active call for full screen video call) */}
+      {currentScreen !== 'call' && <Footer />}
     </div>
   );
 }

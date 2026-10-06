@@ -22,12 +22,13 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3001;
+const MAX_ROOM_PARTICIPANTS = 5;
 
 // In-memory room store: roomCode -> RoomData
 // RoomData: {
 //   code: string,
-//   host: { socketId: string, name: string },
-//   participant: { socketId: string, name: string } | null,
+//   hostId: string,
+//   participants: Map<string, { socketId: string, name: string, isHost: boolean }>,
 //   createdAt: number
 // }
 const rooms = new Map();
@@ -48,7 +49,7 @@ function generateRoomCode() {
 
 // REST endpoints
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', activeRooms: rooms.size, timestamp: Date.now() });
+  res.json({ status: 'ok', activeRooms: rooms.size, maxParticipants: MAX_ROOM_PARTICIPANTS, timestamp: Date.now() });
 });
 
 app.get('/api/room/:code', (req, res) => {
@@ -57,10 +58,22 @@ app.get('/api/room/:code', (req, res) => {
   if (!room) {
     return res.status(404).json({ exists: false, message: 'Invalid room code. Please check and try again.' });
   }
-  if (room.host && room.participant) {
-    return res.status(400).json({ exists: true, full: true, message: 'This room is already full.' });
+  const participantCount = room.participants.size;
+  if (participantCount >= MAX_ROOM_PARTICIPANTS) {
+    return res.status(400).json({ 
+      exists: true, 
+      full: true, 
+      message: `This room is already full (maximum ${MAX_ROOM_PARTICIPANTS} participants).`,
+      count: participantCount,
+      max: MAX_ROOM_PARTICIPANTS
+    });
   }
-  return res.json({ exists: true, full: false, hostName: room.host.name });
+  return res.json({ 
+    exists: true, 
+    full: false, 
+    count: participantCount, 
+    max: MAX_ROOM_PARTICIPANTS 
+  });
 });
 
 // Socket.IO signaling handlers
@@ -68,35 +81,44 @@ io.on('connection', (socket) => {
   console.log(`[Socket Connected] ID: ${socket.id}`);
 
   // Create room
-  socket.on('create-room', ({ userName }, callback) => {
+  socket.on('create-room', ({ userName, maxParticipants }, callback) => {
     try {
       const roomCode = generateRoomCode();
       const cleanName = (userName || 'Host').trim();
+      const maxLimit = Math.min(5, Math.max(1, parseInt(maxParticipants, 10) || 5));
 
       const newRoom = {
         code: roomCode,
-        host: {
-          socketId: socket.id,
-          name: cleanName
-        },
-        participant: null,
+        hostId: socket.id,
+        participants: new Map(),
+        maxParticipants: maxLimit,
         createdAt: Date.now()
       };
 
+      const hostUser = {
+        socketId: socket.id,
+        name: cleanName,
+        isHost: true
+      };
+
+      newRoom.participants.set(socket.id, hostUser);
       rooms.set(roomCode, newRoom);
+
       socket.join(roomCode);
       socket.data.roomCode = roomCode;
       socket.data.userName = cleanName;
       socket.data.isHost = true;
 
-      console.log(`[Room Created] Code: ${roomCode} by Host: ${cleanName} (${socket.id})`);
+      console.log(`[Room Created] Code: ${roomCode} by Host: ${cleanName} (${socket.id}). Selected Capacity: ${maxLimit}`);
 
       if (typeof callback === 'function') {
         callback({
           success: true,
           roomCode,
           userName: cleanName,
-          isHost: true
+          isHost: true,
+          existingPeers: [],
+          maxParticipants: maxLimit
         });
       }
     } catch (err) {
@@ -107,7 +129,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // Join room
+  // Join room (up to configured max participants)
   socket.on('join-room', ({ roomCode, userName }, callback) => {
     try {
       const formattedCode = (roomCode || '').toUpperCase().trim();
@@ -125,47 +147,63 @@ io.on('connection', (socket) => {
         return;
       }
 
-      // Check if room is already full (max 2 participants)
-      if (room.host && room.participant && room.participant.socketId !== socket.id) {
+      // Check if room is already full
+      const maxLimit = room.maxParticipants || MAX_ROOM_PARTICIPANTS;
+      const currentCount = room.participants.size;
+      const isAlreadyInRoom = room.participants.has(socket.id);
+
+      if (!isAlreadyInRoom && currentCount >= maxLimit) {
         if (typeof callback === 'function') {
           return callback({
             success: false,
             error: 'room_full',
-            message: 'This room is already full.'
+            message: `This room is already full (maximum ${maxLimit} participants).`
           });
         }
         return;
       }
 
-      // If host reconnected or joining as participant
-      if (room.host.socketId === socket.id) {
+      // If user is already registered in this room
+      if (isAlreadyInRoom) {
+        const existingPeers = Array.from(room.participants.values())
+          .filter(p => p.socketId !== socket.id)
+          .map(p => ({ peerId: p.socketId, peerName: p.name, isHost: p.isHost }));
+
         return callback({
           success: true,
           roomCode: formattedCode,
-          userName: room.host.name,
-          isHost: true,
-          peer: room.participant ? { name: room.participant.name } : null
+          userName: cleanName,
+          isHost: room.participants.get(socket.id).isHost,
+          existingPeers,
+          maxParticipants: maxLimit
         });
       }
 
-      // Register participant
-      room.participant = {
+      // Collect existing peers before adding this participant
+      const existingPeers = Array.from(room.participants.values())
+        .map(p => ({ peerId: p.socketId, peerName: p.name, isHost: p.isHost }));
+
+      // Register new participant
+      const newParticipant = {
         socketId: socket.id,
-        name: cleanName
+        name: cleanName,
+        isHost: false
       };
 
+      room.participants.set(socket.id, newParticipant);
       socket.join(formattedCode);
       socket.data.roomCode = formattedCode;
       socket.data.userName = cleanName;
       socket.data.isHost = false;
 
-      console.log(`[Participant Joined] Code: ${formattedCode} - ${cleanName} (${socket.id})`);
+      console.log(`[Participant Joined] Code: ${formattedCode} - ${cleanName} (${socket.id}). Total: ${room.participants.size}/${maxLimit}`);
 
-      // Notify host that participant has joined
-      socket.to(room.host.socketId).emit('user-joined', {
+      // Notify all existing peers in the room that a new participant has joined
+      socket.to(formattedCode).emit('user-joined', {
         peerId: socket.id,
         peerName: cleanName,
-        isHost: false
+        isHost: false,
+        totalParticipants: room.participants.size
       });
 
       if (typeof callback === 'function') {
@@ -174,11 +212,8 @@ io.on('connection', (socket) => {
           roomCode: formattedCode,
           userName: cleanName,
           isHost: false,
-          peer: {
-            peerId: room.host.socketId,
-            peerName: room.host.name,
-            isHost: true
-          }
+          existingPeers,
+          maxParticipants: maxLimit
         });
       }
     } catch (err) {
@@ -189,32 +224,53 @@ io.on('connection', (socket) => {
     }
   });
 
-  // WebRTC Signaling: Offer
-  socket.on('offer', ({ roomCode, offer }) => {
-    console.log(`[Signaling Offer] from ${socket.id} in room ${roomCode}`);
-    socket.to(roomCode).emit('offer', {
-      offer,
-      senderId: socket.id,
-      senderName: socket.data.userName
-    });
+  // WebRTC Signaling: Offer (supports targeted peer in mesh or broadcast)
+  socket.on('offer', ({ roomCode, targetId, offer }) => {
+    if (targetId) {
+      io.to(targetId).emit('offer', {
+        offer,
+        senderId: socket.id,
+        senderName: socket.data.userName
+      });
+    } else if (roomCode) {
+      socket.to(roomCode).emit('offer', {
+        offer,
+        senderId: socket.id,
+        senderName: socket.data.userName
+      });
+    }
   });
 
   // WebRTC Signaling: Answer
-  socket.on('answer', ({ roomCode, answer }) => {
-    console.log(`[Signaling Answer] from ${socket.id} in room ${roomCode}`);
-    socket.to(roomCode).emit('answer', {
-      answer,
-      senderId: socket.id,
-      senderName: socket.data.userName
-    });
+  socket.on('answer', ({ roomCode, targetId, answer }) => {
+    if (targetId) {
+      io.to(targetId).emit('answer', {
+        answer,
+        senderId: socket.id,
+        senderName: socket.data.userName
+      });
+    } else if (roomCode) {
+      socket.to(roomCode).emit('answer', {
+        answer,
+        senderId: socket.id,
+        senderName: socket.data.userName
+      });
+    }
   });
 
   // WebRTC Signaling: ICE Candidate
-  socket.on('ice-candidate', ({ roomCode, candidate }) => {
-    socket.to(roomCode).emit('ice-candidate', {
-      candidate,
-      senderId: socket.id
-    });
+  socket.on('ice-candidate', ({ roomCode, targetId, candidate }) => {
+    if (targetId) {
+      io.to(targetId).emit('ice-candidate', {
+        candidate,
+        senderId: socket.id
+      });
+    } else if (roomCode) {
+      socket.to(roomCode).emit('ice-candidate', {
+        candidate,
+        senderId: socket.id
+      });
+    }
   });
 
   // Explicit Leave Room
@@ -234,26 +290,27 @@ function handleUserLeave(socket) {
   if (!roomCode || !rooms.has(roomCode)) return;
 
   const room = rooms.get(roomCode);
-  const isHost = socket.data.isHost;
   const userName = socket.data.userName || 'User';
 
   console.log(`[User Left] ${userName} (${socket.id}) from room ${roomCode}`);
 
-  // Notify the other participant
+  // Remove participant from room
+  room.participants.delete(socket.id);
+
+  // Notify all remaining participants in the room
   socket.to(roomCode).emit('user-left', {
     message: 'Participant Disconnected',
     disconnectedId: socket.id,
-    userName
+    userName,
+    totalParticipants: room.participants.size
   });
 
-  if (isHost) {
-    // If host leaves, clean up room
+  // If room is empty, clean it up
+  if (room.participants.size === 0) {
     rooms.delete(roomCode);
-    console.log(`[Room Closed] Host left room: ${roomCode}`);
+    console.log(`[Room Closed] All participants left room: ${roomCode}`);
   } else {
-    // Participant left, host is still in room
-    room.participant = null;
-    console.log(`[Room Updated] Participant left room: ${roomCode}, awaiting new participant`);
+    console.log(`[Room Updated] Room ${roomCode} remaining participants: ${room.participants.size}/${MAX_ROOM_PARTICIPANTS}`);
   }
 
   socket.leave(roomCode);
@@ -274,6 +331,7 @@ server.listen(PORT, () => {
   console.log(`=========================================`);
   console.log(`PulseGuard AI Signaling Server running`);
   console.log(`Port: ${PORT}`);
+  console.log(`Max Room Participants: ${MAX_ROOM_PARTICIPANTS}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`=========================================`);
 });
