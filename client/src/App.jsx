@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
@@ -11,6 +11,22 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState('home'); // 'home' | 'security' | 'how-it-works' | 'about' | 'settings'
   const [currentScreen, setCurrentScreen] = useState('page'); // 'page' | 'call'
   const [roomData, setRoomData] = useState(null); // { roomCode, userName, isHost }
+  
+  // Theme state ('light' | 'dark')
+  const [theme, setTheme] = useState(() => localStorage.getItem('pg_theme') || 'light');
+
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('pg_theme', theme);
+  }, [theme]);
+
+  const handleToggleTheme = () => {
+    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+  };
 
   const handleEnterRoom = (data) => {
     setRoomData(data);
@@ -38,19 +54,27 @@ export default function App() {
     }
   };
 
+  const isInCall = currentScreen === 'call';
+
   return (
     <div className={`${
-      currentScreen === 'call' ? 'h-screen w-screen overflow-hidden bg-slate-950' : 'min-h-screen bg-white'
-    } flex flex-col selection:bg-deepsea-100 selection:text-deepsea-900 font-sans text-slate-900`}>
-      {/* Global Navigation Header (shown in video call and across pages) */}
-      <Header
-        currentPage={currentScreen === 'call' ? 'call' : currentPage}
-        onNavigate={handleNavigate}
-      />
+      isInCall ? 'h-screen w-screen overflow-hidden bg-slate-950' : 'min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors duration-200'
+    } flex flex-col selection:bg-deepsea-100 selection:text-deepsea-900 font-sans`}>
+
+      {/* Global Navigation Header — hidden during video call for true full-screen immersion */}
+      {!isInCall && (
+        <Header
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+        />
+      )}
 
       {/* Main Content Area */}
-      <main className={`flex-1 flex flex-col ${currentScreen === 'call' ? 'overflow-hidden' : ''}`}>
-        {currentScreen === 'call' && roomData ? (
+      <main className={`flex-1 flex flex-col ${isInCall ? 'overflow-hidden' : ''}`}>
+        {isInCall && roomData ? (
+          /* CallScreen takes 100% of the viewport with its own compact internal call bar */
           <CallScreen
             roomData={roomData}
             onLeaveCall={handleLeaveCall}
@@ -67,14 +91,14 @@ export default function App() {
               <AboutPage />
             )}
             {currentPage === 'settings' && (
-              <SettingsPage />
+              <SettingsPage theme={theme} onToggleTheme={handleToggleTheme} />
             )}
           </>
         )}
       </main>
 
-      {/* Footer (hidden during active call for full screen video call) */}
-      {currentScreen !== 'call' && <Footer />}
+      {/* Footer — hidden during call */}
+      {!isInCall && <Footer />}
     </div>
   );
 }

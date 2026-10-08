@@ -3,7 +3,7 @@ import { Shield, Lock, Eye, Cpu } from 'lucide-react';
 
 export default function Footer() {
   return (
-    <footer className="bg-slate-900 text-slate-400 mt-auto">
+    <footer className="bg-slate-900 dark:bg-slate-950 text-slate-400 mt-auto border-t border-slate-800 dark:border-slate-900 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {/* Brand */}
@@ -57,11 +57,11 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-slate-800 mt-8 pt-6 flex flex-col sm:flex-row items-center justify-between space-y-3 sm:space-y-0">
-          <p className="text-xs text-slate-600">
+        <div className="border-t border-slate-800 dark:border-slate-900 mt-8 pt-6 flex flex-col sm:flex-row items-center justify-between space-y-3 sm:space-y-0">
+          <p className="text-xs text-slate-600 dark:text-slate-500">
             © {new Date().getFullYear()} PulseGuard AI — Academic Research Platform
           </p>
-          <div className="flex items-center space-x-1 text-xs text-slate-600">
+          <div className="flex items-center space-x-1 text-xs text-slate-600 dark:text-slate-500">
             <Cpu className="w-3 h-3" />
             <span>WebRTC + Socket.IO + React</span>
           </div>

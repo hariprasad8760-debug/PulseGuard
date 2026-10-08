@@ -61,18 +61,18 @@ export default function HowItWorksPage({ onNavigate }) {
   ];
 
   return (
-    <div className="flex-1 flex flex-col bg-white">
+    <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 transition-colors duration-200">
       {/* Header */}
-      <section className="border-b border-slate-100 bg-slate-50/50 py-12 sm:py-16">
+      <section className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 py-12 sm:py-16">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center space-y-4">
-          <div className="inline-flex items-center space-x-2 px-4 py-1.5 rounded-full bg-deepsea-50 border border-deepsea-200 text-deepsea-800 text-xs font-semibold">
-            <Layers className="w-3.5 h-3.5 text-deepsea-700" />
+          <div className="inline-flex items-center space-x-2 px-4 py-1.5 rounded-full bg-deepsea-50 dark:bg-slate-800 border border-deepsea-200 dark:border-slate-700 text-deepsea-800 dark:text-sky-300 text-xs font-semibold">
+            <Layers className="w-3.5 h-3.5 text-deepsea-700 dark:text-sky-400" />
             <span>Process & Verification Workflow</span>
           </div>
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-deepsea-900 tracking-tight">
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-deepsea-900 dark:text-white tracking-tight">
             How PulseGuard AI Works
           </h1>
-          <p className="text-slate-600 text-base max-w-2xl mx-auto leading-relaxed">
+          <p className="text-slate-600 dark:text-slate-300 text-base max-w-2xl mx-auto leading-relaxed">
             Understanding the end-to-end flow from encrypted WebRTC connection to modular AI security analysis.
           </p>
         </div>
@@ -88,35 +88,35 @@ export default function HowItWorksPage({ onNavigate }) {
               return (
                 <div 
                   key={item.step} 
-                  className="bg-white rounded-2xl border border-slate-200 p-6 shadow-card hover:shadow-card-hover transition-all duration-300 flex flex-col justify-between relative group"
+                  className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 shadow-card hover:shadow-card-hover transition-all duration-300 flex flex-col justify-between relative group"
                 >
                   <div>
                     <div className="flex items-center justify-between mb-4">
-                      <span className="text-2xl font-black font-mono text-deepsea-300 group-hover:text-deepsea-800 transition-colors">
+                      <span className="text-2xl font-black font-mono text-deepsea-300 dark:text-slate-700 group-hover:text-deepsea-800 dark:group-hover:text-sky-400 transition-colors">
                         {item.step}
                       </span>
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full border ${
                         isActive 
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                          : 'bg-deepsea-50 text-deepsea-700 border-deepsea-200'
+                          ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900' 
+                          : 'bg-deepsea-50 dark:bg-slate-800 text-deepsea-700 dark:text-sky-300 border-deepsea-200 dark:border-slate-700'
                       }`}>
                         {item.badge}
                       </span>
                     </div>
 
-                    <div className="w-10 h-10 rounded-xl bg-deepsea-50 border border-deepsea-100 flex items-center justify-center text-deepsea-800 mb-3">
+                    <div className="w-10 h-10 rounded-xl bg-deepsea-50 dark:bg-slate-800 border border-deepsea-100 dark:border-slate-700 flex items-center justify-center text-deepsea-800 dark:text-sky-400 mb-3">
                       <Icon className="w-5 h-5" />
                     </div>
 
-                    <h3 className="text-base font-bold text-deepsea-900 mb-2">
+                    <h3 className="text-base font-bold text-deepsea-900 dark:text-white mb-2">
                       {item.title}
                     </h3>
-                    <p className="text-xs text-slate-600 leading-relaxed font-normal">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed font-normal">
                       {item.desc}
                     </p>
                   </div>
 
-                  <div className="pt-4 mt-4 border-t border-slate-100 flex items-center text-[11px] font-medium text-slate-400">
+                  <div className="pt-4 mt-4 border-t border-slate-100 dark:border-slate-800 flex items-center text-[11px] font-medium text-slate-400 dark:text-slate-500">
                     <span>Stage {idx + 1} of 6</span>
                   </div>
                 </div>
@@ -127,42 +127,42 @@ export default function HowItWorksPage({ onNavigate }) {
       </section>
 
       {/* Architectural Flow Diagram Card */}
-      <section className="bg-slate-50 border-t border-slate-100 py-16">
+      <section className="bg-slate-50 dark:bg-slate-900/40 border-t border-slate-100 dark:border-slate-800 py-16">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-10 space-y-2">
-            <h2 className="text-2xl font-bold text-deepsea-900">
+            <h2 className="text-2xl font-bold text-deepsea-900 dark:text-white">
               System Architecture Flow
             </h2>
-            <p className="text-xs sm:text-sm text-slate-600 max-w-lg mx-auto">
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 max-w-lg mx-auto">
               Visual overview of data flow from user hardware up to real-time security reporting.
             </p>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-card space-y-6">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 shadow-card space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-              <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2">
                 <div className="w-8 h-8 rounded-lg bg-deepsea-800 text-white flex items-center justify-center mx-auto text-xs font-bold">1</div>
-                <h4 className="text-xs font-bold text-slate-800">Browser Media</h4>
-                <p className="text-[11px] text-slate-500 leading-snug">Webcam & Mic capture with local device permission validation.</p>
+                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Browser Media</h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">Webcam & Mic capture with local device permission validation.</p>
               </div>
 
-              <div className="p-4 rounded-xl bg-deepsea-50 border border-deepsea-200 space-y-2">
+              <div className="p-4 rounded-xl bg-deepsea-50 dark:bg-slate-800/80 border border-deepsea-200 dark:border-slate-700 space-y-2">
                 <div className="w-8 h-8 rounded-lg bg-deepsea-800 text-white flex items-center justify-center mx-auto text-xs font-bold">2</div>
-                <h4 className="text-xs font-bold text-deepsea-900">WebRTC Peer Connection</h4>
-                <p className="text-[11px] text-slate-600 leading-snug">Real-time P2P transport with STUN signaling on Socket.IO.</p>
+                <h4 className="text-xs font-bold text-deepsea-900 dark:text-sky-300">WebRTC Peer Connection</h4>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-snug">Real-time P2P transport with STUN signaling on Socket.IO.</p>
               </div>
 
-              <div className="p-4 rounded-xl bg-sky-50 border border-sky-200 space-y-2">
+              <div className="p-4 rounded-xl bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-900/60 space-y-2">
                 <div className="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center mx-auto text-xs font-bold">3</div>
-                <h4 className="text-xs font-bold text-sky-950">Modular Security Panel</h4>
-                <p className="text-[11px] text-sky-800 leading-snug">Liveness, deepfake, and rPPG analysis pipelines (Phase 2 ready).</p>
+                <h4 className="text-xs font-bold text-sky-950 dark:text-sky-300">Modular Security Panel</h4>
+                <p className="text-[11px] text-sky-800 dark:text-sky-400 leading-snug">Liveness, deepfake, and rPPG analysis pipelines (Phase 2 ready).</p>
               </div>
             </div>
 
-            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-xs text-slate-600 flex items-start space-x-3">
-              <Sparkles className="w-4 h-4 text-deepsea-700 shrink-0 mt-0.5" />
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-xl p-4 border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-400 flex items-start space-x-3">
+              <Sparkles className="w-4 h-4 text-deepsea-700 dark:text-sky-400 shrink-0 mt-0.5" />
               <div>
-                <span className="font-semibold text-slate-800">Privacy & Performance Guarantee: </span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">Privacy & Performance Guarantee: </span>
                 Video and audio streams are exchanged directly between participants. No video frames are sent to third-party databases.
               </div>
             </div>
@@ -170,7 +170,7 @@ export default function HowItWorksPage({ onNavigate }) {
             <div className="text-center pt-2">
               <button
                 onClick={() => onNavigate('home')}
-                className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-deepsea-800 hover:bg-deepsea-900 text-white text-xs font-semibold shadow-md transition-all cursor-pointer"
+                className="inline-flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-deepsea-800 dark:bg-deepsea-700 hover:bg-deepsea-900 dark:hover:bg-deepsea-600 text-white text-xs font-semibold shadow-md transition-all cursor-pointer"
               >
                 <span>Launch Secure Room Now</span>
                 <ArrowRight className="w-3.5 h-3.5" />
