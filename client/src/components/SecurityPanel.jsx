@@ -1,170 +1,360 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Shield, Eye, Cpu, Activity, Brain, ChevronDown, ChevronUp, Info
+  Shield, Eye, Cpu, Activity, Brain, ChevronDown, ChevronUp,
+  X, Server, CheckCircle2, AlertTriangle, Clock, RefreshCw,
+  Layers, Lock, Sparkles
 } from 'lucide-react';
+import { checkBackendHealth } from '../services/api';
 
 /**
- * SecurityPanel — Right-side AI security dashboard shown during active calls.
+ * SecurityPanel — Slideable Right-Side AI Security Panel for Video Calls.
  *
- * Phase 2 Integration:
- *   Pass real-time `analysisResult` from RiskEngine.computeRisk() into this component.
- *   The panel will automatically display live scores when they are available.
- *
- * Expected `analysisResult` shape (from ai/RiskEngine.js ANALYSIS_RESULT_SCHEMA):
- *   {
- *     liveness: number | null,
- *     deepfakeRisk: number | null,
- *     rppgConfidence: number | null,
- *     faceConfidence: number | null,
- *     temporalConsistency: number | null,
- *     overallRisk: number | null,
- *     securityStatus: 'secure'|'warning'|'critical'|'unknown',
- *     flags: Array<string>
- *   }
+ * Implements Step 2 requirements:
+ * 1. Slide-in from right with smooth transition and accessible close trigger.
+ * 2. Real Face Detection & 3D Landmark Tracking status from OpenCV & MediaPipe.
+ * 3. Human Liveness Assessment (clearly stating liveness is not available yet).
+ * 4. Deepfake Detection status (not available yet).
+ * 5. Expandable Technical Details with real bounding box and landmark metrics.
+ * 6. Overall Assessment explaining that face presence alone does not prove authenticity.
  */
+export default function SecurityPanel({
+  isOpen = false,
+  onClose,
+  analysisState = 'inconclusive', // 'analyzing' | 'available' | 'unavailable' | 'inconclusive'
+  faceData = null,
+  lastAnalyzedAt = null
+}) {
+  const [technicalExpanded, setTechnicalExpanded] = useState(false);
+  const [backendState, setBackendState] = useState('checking'); // 'checking' | 'connected' | 'unavailable'
 
-function MetricRow({ icon: Icon, label, value, description }) {
-  return (
-    <div className="flex items-start justify-between py-2.5 border-b border-slate-100 dark:border-slate-800 last:border-0">
-      <div className="flex items-center space-x-2 min-w-0">
-        <div className="w-7 h-7 rounded-lg bg-deepsea-50 dark:bg-slate-800 flex items-center justify-center shrink-0">
-          <Icon className="w-3.5 h-3.5 text-deepsea-700 dark:text-sky-400" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{label}</p>
-          {description && (
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 truncate">{description}</p>
-          )}
-        </div>
-      </div>
-      <div className="ml-2 shrink-0">
-        {value === null || value === undefined ? (
-          <span className="text-[10px] font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-            Not analyzed
-          </span>
-        ) : typeof value === 'number' ? (
-          <div className="text-right">
-            <span className={`text-xs font-bold ${
-              value >= 0.8 ? 'text-emerald-600 dark:text-emerald-400' :
-              value >= 0.5 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
-            }`}>
-              {Math.round(value * 100)}%
-            </span>
-          </div>
-        ) : (
-          <span className="text-[10px] font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">
-            {value}
-          </span>
-        )}
-      </div>
-    </div>
-  );
-}
+  // Periodic health check
+  useEffect(() => {
+    let isMounted = true;
+    async function verifyBackend() {
+      const result = await checkBackendHealth();
+      if (!isMounted) return;
+      setBackendState(result.available ? 'connected' : 'unavailable');
+    }
 
-export default function SecurityPanel({ analysisResult = null, isCollapsible = false }) {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+    verifyBackend();
+    const interval = setInterval(verifyBackend, 12000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
-  const hasResults = analysisResult && analysisResult.securityStatus !== 'unknown';
+  // Keyboard accessibility: ESC closes panel
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isOpen && onClose) {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
-  const overallStatusConfig = () => {
-    if (!hasResults) return { label: 'AI analysis not started', color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800' };
-    switch (analysisResult.securityStatus) {
-      case 'secure': return { label: 'No significant risk detected', color: 'text-emerald-700 dark:text-emerald-400', bg: 'bg-emerald-50 dark:bg-emerald-950/60 border-emerald-200 dark:border-emerald-900' };
-      case 'warning': return { label: 'Potential risk detected', color: 'text-amber-700 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-950/60 border-amber-200 dark:border-amber-900' };
-      case 'critical': return { label: 'High-risk signal detected', color: 'text-rose-700 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-950/60 border-rose-200 dark:border-rose-900' };
-      default: return { label: 'AI analysis not started', color: 'text-slate-500 dark:text-slate-400', bg: 'bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-800' };
+  const hasFace = Boolean(faceData && faceData.face_detected && faceData.face_count > 0);
+  const faceCount = faceData?.face_count || 0;
+  const primaryFace = faceData?.faces?.[0] || null;
+
+  // Analysis State Badge
+  const getAnalysisStateBadge = () => {
+    if (backendState === 'unavailable') {
+      return {
+        label: 'Analysis unavailable',
+        className: 'bg-rose-50 dark:bg-rose-950/70 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-900',
+        dot: 'bg-rose-500'
+      };
+    }
+    switch (analysisState) {
+      case 'analyzing':
+        return {
+          label: 'Analyzing',
+          className: 'bg-blue-50 dark:bg-blue-950/70 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-900',
+          dot: 'bg-blue-500 animate-ping'
+        };
+      case 'available':
+        return {
+          label: 'Analysis available',
+          className: 'bg-emerald-50 dark:bg-emerald-950/70 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900',
+          dot: 'bg-emerald-500'
+        };
+      case 'inconclusive':
+      default:
+        return {
+          label: 'Inconclusive',
+          className: 'bg-amber-50 dark:bg-amber-950/70 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900',
+          dot: 'bg-amber-500'
+        };
     }
   };
-  const statusConfig = overallStatusConfig();
+
+  const stateBadge = getAnalysisStateBadge();
 
   return (
-    <div className="flex flex-col bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 h-full overflow-y-auto">
-      {/* Panel Header */}
-      <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900 z-10">
-        <div className="flex items-center space-x-2">
-          <div className="w-8 h-8 rounded-lg bg-deepsea-900 dark:bg-deepsea-800 flex items-center justify-center">
-            <Shield className="w-4 h-4 text-sky-400" />
-          </div>
-          <div>
-            <h3 className="text-sm font-bold text-deepsea-900 dark:text-white">PulseGuard Security</h3>
-            <p className="text-[10px] text-slate-500 dark:text-slate-400">AI Analysis Dashboard</p>
-          </div>
-        </div>
-        {isCollapsible && (
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-          >
-            {isCollapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
-          </button>
-        )}
-      </div>
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {isOpen && (
+        <div
+          onClick={onClose}
+          className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-30 sm:hidden transition-opacity"
+          aria-hidden="true"
+        />
+      )}
 
-      {!isCollapsed && (
-        <div className="flex-1 p-4 space-y-4">
-          {/* Coming Soon Notice */}
-          <div className="bg-deepsea-50/70 dark:bg-slate-800/70 border border-deepsea-200/60 dark:border-slate-700 rounded-xl p-3 flex items-start space-x-2">
-            <Info className="w-4 h-4 text-deepsea-700 dark:text-sky-400 shrink-0 mt-0.5" />
+      {/* Slideable Right-Side Drawer */}
+      <aside
+        className={`fixed inset-y-0 right-0 z-40 w-full sm:w-96 md:w-[420px] bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out font-sans select-none ${
+          isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+        }`}
+        role="region"
+        aria-label="PulseGuard Live Security Analysis Panel"
+      >
+        {/* Panel Header */}
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xs sticky top-0 z-10 flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-9 h-9 rounded-xl bg-deepsea-900 dark:bg-deepsea-800 flex items-center justify-center shadow-md">
+              <Shield className="w-5 h-5 text-sky-400" />
+            </div>
             <div>
-              <p className="text-xs font-semibold text-deepsea-900 dark:text-white">AI Security Module</p>
-              <p className="text-[10px] text-deepsea-700 dark:text-slate-300 mt-0.5 leading-relaxed">
-                AI analysis capabilities are under active development and will be activated in the next release.
+              <h2 className="text-sm font-extrabold text-deepsea-900 dark:text-white tracking-tight leading-tight">
+                PulseGuard AI
+              </h2>
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                Live Security Analysis
               </p>
             </div>
           </div>
 
-          {/* Analysis Metrics */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1">
-            <MetricRow
-              icon={Eye}
-              label="Liveness"
-              value={analysisResult?.liveness ?? null}
-              description="Live presence verification"
-            />
-            <MetricRow
-              icon={Brain}
-              label="Deepfake Risk"
-              value={analysisResult?.deepfakeRisk ?? null}
-              description="AI manipulation detection"
-            />
-            <MetricRow
-              icon={Activity}
-              label="Physiological Signal"
-              value={analysisResult?.rppgConfidence ?? null}
-              description="rPPG biometric analysis"
-            />
-            <MetricRow
-              icon={Cpu}
-              label="Facial Behavior"
-              value={analysisResult?.faceConfidence ?? null}
-              description="Landmark consistency"
-            />
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+            aria-label="Close security panel"
+            title="Close Panel (Esc)"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Scrollable Content Container */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
+
+          {/* Analysis State & Timestamp Bar */}
+          <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 text-xs">
+            <div className={`inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full border text-[11px] font-bold ${stateBadge.className}`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${stateBadge.dot}`} />
+              <span>{stateBadge.label}</span>
+            </div>
+
+            <div className="flex items-center space-x-1 text-[11px] text-slate-500 dark:text-slate-400">
+              <Clock className="w-3.5 h-3.5" />
+              <span>
+                {lastAnalyzedAt ? new Date(lastAnalyzedAt).toLocaleTimeString() : 'Awaiting frames...'}
+              </span>
+            </div>
           </div>
 
-          {/* Overall Status */}
-          <div className={`rounded-xl border p-3 ${statusConfig.bg}`}>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Overall Security Status</p>
-            <p className={`text-sm font-bold ${statusConfig.color}`}>
-              {statusConfig.label}
+          {/* Backend Connection Status */}
+          <div className="flex items-center justify-between px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-xs">
+            <div className="flex items-center space-x-2">
+              <Server className="w-3.5 h-3.5 text-deepsea-700 dark:text-sky-400" />
+              <span className="font-semibold text-slate-700 dark:text-slate-300 text-xs">AI Backend (FastAPI):</span>
+            </div>
+            <div className="flex items-center space-x-1.5 font-semibold text-[11px]">
+              {backendState === 'connected' && (
+                <span className="text-emerald-600 dark:text-emerald-400 flex items-center space-x-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                  <span>Backend connected.</span>
+                </span>
+              )}
+              {backendState === 'checking' && (
+                <span className="text-amber-600 dark:text-amber-400 flex items-center space-x-1">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>Checking connection...</span>
+                </span>
+              )}
+              {backendState === 'unavailable' && (
+                <span className="text-rose-600 dark:text-rose-400 flex items-center space-x-1">
+                  <span className="w-2 h-2 rounded-full bg-rose-500" />
+                  <span>Backend unavailable.</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Section 1: Human Liveness Assessment */}
+          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+              <div className="flex items-center space-x-2">
+                <Eye className="w-4 h-4 text-deepsea-700 dark:text-sky-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-deepsea-900 dark:text-white">
+                  Human Liveness Assessment
+                </h3>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                backendState === 'unavailable'
+                  ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-400'
+                  : hasFace
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400'
+                  : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400'
+              }`}>
+                {backendState === 'unavailable'
+                  ? 'ANALYSIS UNAVAILABLE'
+                  : hasFace
+                  ? 'FACE DETECTED'
+                  : 'INCONCLUSIVE'}
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-slate-500 dark:text-slate-400">Face Detection Status:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {backendState === 'unavailable' ? 'Unavailable' : hasFace ? `Detected (${faceCount} Face${faceCount > 1 ? 's' : ''})` : 'No face in frame'}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-slate-500 dark:text-slate-400">Facial Landmarks:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {hasFace && primaryFace ? `${primaryFace.landmark_count} 3D Mesh Points` : 'Tracking inactive'}
+                </span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-slate-500 dark:text-slate-400">Liveness Model Status:</span>
+                <span className="font-semibold text-slate-600 dark:text-slate-300">
+                  Liveness analysis is not available yet.
+                </span>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-900/60 text-[11px] text-amber-800 dark:text-amber-300 flex items-start space-x-2">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+              <p className="leading-snug">
+                <strong>Important:</strong> Face detection confirms facial presence and tracking points, but does <em>not</em> verify physical human liveness.
+              </p>
+            </div>
+          </section>
+
+          {/* Section 2: Deepfake Detection */}
+          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+              <div className="flex items-center space-x-2">
+                <Brain className="w-4 h-4 text-deepsea-700 dark:text-sky-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-deepsea-900 dark:text-white">
+                  Deepfake Detection
+                </h3>
+              </div>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700">
+                INCONCLUSIVE
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-slate-500 dark:text-slate-400">Detector Availability:</span>
+                <span className="font-semibold text-slate-500 dark:text-slate-400">Not available yet</span>
+              </div>
+              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-slate-500 dark:text-slate-400">CNN Model Status:</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300">
+                  Deepfake detection is not available yet.
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-relaxed">
+              Pretrained CNN inference is scheduled for Step 4. Zero fabricated risk scores are displayed.
             </p>
-            {analysisResult?.flags?.length > 0 && (
-              <div className="mt-2 space-y-1">
-                {analysisResult.flags.map((flag, i) => (
-                  <div key={i} className="text-[10px] text-rose-700 dark:text-rose-400 flex items-center space-x-1">
-                    <span className="w-1 h-1 rounded-full bg-rose-500 inline-block" />
-                    <span>{flag}</span>
+          </section>
+
+          {/* Section 3: Technical Details (Expandable) */}
+          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setTechnicalExpanded(!technicalExpanded)}
+              className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer"
+            >
+              <div className="flex items-center space-x-2">
+                <Cpu className="w-4 h-4 text-deepsea-700 dark:text-sky-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-deepsea-900 dark:text-white">
+                  Technical Details
+                </h3>
+              </div>
+              {technicalExpanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+            </button>
+
+            {technicalExpanded && (
+              <div className="px-4 pb-4 pt-1 space-y-3 text-xs border-t border-slate-100 dark:border-slate-800">
+                <div>
+                  <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-1">Face Detection (OpenCV & MediaPipe):</h4>
+                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 font-mono text-[11px] text-slate-700 dark:text-slate-300 space-y-1">
+                    <p>Status: {faceData ? faceData.status : 'Awaiting data'}</p>
+                    <p>Detected Faces: {faceCount}</p>
+                    {primaryFace?.bounding_box && (
+                      <p>
+                        Bounding Box: x={primaryFace.bounding_box.x}, y={primaryFace.bounding_box.y},
+                        w={primaryFace.bounding_box.width}, h={primaryFace.bounding_box.height}
+                      </p>
+                    )}
                   </div>
-                ))}
+                </div>
+
+                <div>
+                  <h4 className="font-bold text-slate-800 dark:text-slate-200 mb-1">Facial Landmark Mesh:</h4>
+                  <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 font-mono text-[11px] text-slate-700 dark:text-slate-300 space-y-1">
+                    <p>Mesh Model: MediaPipe Tasks FaceLandmarker</p>
+                    <p>Tracked Landmarks: {primaryFace?.landmark_count || 0} 3D coordinates</p>
+                    {primaryFace?.key_regions?.forehead && (
+                      <p>Forehead ROI: x={primaryFace.key_regions.forehead.x}, y={primaryFace.key_regions.forehead.y}</p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="space-y-1 pt-1 text-[11px]">
+                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-500">rPPG Analysis:</span>
+                    <span className="text-slate-400 italic">Not available yet.</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-500">Deepfake CNN:</span>
+                    <span className="text-slate-400 italic">Not available yet.</span>
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
+                    <span className="text-slate-500">Temporal Analysis:</span>
+                    <span className="text-slate-400 italic">Not available yet.</span>
+                  </div>
+                  <div className="flex justify-between py-1">
+                    <span className="text-slate-500">Risk Assessment:</span>
+                    <span className="text-slate-400 italic">Not fully implemented yet.</span>
+                  </div>
+                </div>
               </div>
             )}
-          </div>
+          </section>
 
-          {/* Disclaimer */}
-          <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center leading-relaxed px-1">
-            AI analysis values shown here represent real-time module outputs. No fabricated detection results are generated.
-          </p>
+          {/* Section 4: Overall Assessment */}
+          <section className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-2xl p-4 shadow-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-deepsea-900 dark:text-white">
+                Overall Assessment
+              </h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-600">
+                INCONCLUSIVE
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              <strong>Insufficient analysis data to assess authenticity.</strong>
+            </p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              Detecting a face verifies camera visibility and landmark geometry, but does not prove genuine identity or lack of video manipulation. Full verification will be unlocked upon completing the rPPG and deepfake CNN stages.
+            </p>
+          </section>
+
         </div>
-      )}
-    </div>
+      </aside>
+    </>
   );
 }

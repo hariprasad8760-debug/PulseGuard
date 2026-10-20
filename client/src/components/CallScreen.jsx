@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useWebRTC } from '../hooks/useWebRTC';
 import VideoPanel from './VideoPanel';
 import MoveableUserVideo from './MoveableUserVideo';
@@ -6,6 +6,7 @@ import CallControls from './CallControls';
 import PermissionModal from './PermissionModal';
 import SecurityPanel from './SecurityPanel';
 import SecurityIndicator from './SecurityIndicator';
+import { detectFaceFromFrame } from '../services/api';
 import { 
   Copy, 
   Check, 
@@ -24,14 +25,23 @@ import {
 export default function CallScreen({ roomData, onLeaveCall }) {
   const { roomCode, userName, isHost, maxParticipants = 5 } = roomData;
   const [isCopied, setIsCopied] = useState(false);
-  const [securityPanelOpen, setSecurityPanelOpen] = useState(true);
+  const [securityPanelOpen, setSecurityPanelOpen] = useState(false);
+  
+  // Real-time Face Detection & Security Analysis state
+  const [faceData, setFaceData] = useState(null);
+  const [analysisState, setAnalysisState] = useState('inconclusive'); // 'analyzing' | 'available' | 'unavailable' | 'inconclusive'
+  const [lastAnalyzedAt, setLastAnalyzedAt] = useState(null);
+
+  const hiddenVideoRef = useRef(null);
+  const hiddenCanvasRef = useRef(null);
+  const isAnalyzingRef = useRef(false);
   
   // Choose which screen will be full screen: null (default grid) | 'local' | peerId
   const [focusedPeerId, setFocusedPeerId] = useState(null);
   
   const stageContainerRef = useRef(null);
 
-  // Phase 2: Replace null with real result from RiskEngine.computeRisk()
+  // Phase 2: Live face detection data passed into security indicators
   const analysisResult = null;
 
   const {
@@ -53,6 +63,64 @@ export default function CallScreen({ roomData, onLeaveCall }) {
     isHost,
     onCallEnded: onLeaveCall
   });
+
+  // Background Face Detection & Tracking loop (every 2.0s)
+  useEffect(() => {
+    if (!localStream || isCameraOff) {
+      setFaceData(null);
+      setAnalysisState('inconclusive');
+      return;
+    }
+
+    const videoEl = hiddenVideoRef.current;
+    if (videoEl && videoEl.srcObject !== localStream) {
+      videoEl.srcObject = localStream;
+      videoEl.play().catch(() => {});
+    }
+
+    const intervalId = setInterval(async () => {
+      if (isAnalyzingRef.current) return;
+      if (!hiddenVideoRef.current || !hiddenCanvasRef.current) return;
+      if (hiddenVideoRef.current.readyState < 2) return;
+
+      try {
+        const video = hiddenVideoRef.current;
+        const canvas = hiddenCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return;
+
+        // Downscaled 320x240 frame for optimal network latency and memory efficiency
+        canvas.width = 320;
+        canvas.height = 240;
+        ctx.drawImage(video, 0, 0, 320, 240);
+
+        const frameBase64 = canvas.toDataURL('image/jpeg', 0.7);
+
+        isAnalyzingRef.current = true;
+        setAnalysisState('analyzing');
+
+        const response = await detectFaceFromFrame(frameBase64, roomCode);
+
+        if (response.success && response.data) {
+          setFaceData(response.data);
+          setLastAnalyzedAt(Date.now());
+          setAnalysisState(response.data.face_detected ? 'available' : 'inconclusive');
+        } else {
+          setAnalysisState('unavailable');
+        }
+      } catch (err) {
+        console.warn('Face detection frame capture error:', err);
+        setAnalysisState('unavailable');
+      } finally {
+        isAnalyzingRef.current = false;
+      }
+    }, 2000);
+
+    return () => {
+      clearInterval(intervalId);
+      isAnalyzingRef.current = false;
+    };
+  }, [localStream, isCameraOff, roomCode]);
 
   const maxCapacity = maxParticipants || 5;
 
@@ -161,13 +229,24 @@ export default function CallScreen({ roomData, onLeaveCall }) {
 
         {/* Right: Security indicator + panel toggle */}
         <div className="flex items-center space-x-2">
-          <SecurityIndicator analysisResult={analysisResult} />
+          <SecurityIndicator 
+            analysisResult={analysisResult}
+            faceData={faceData}
+            analysisState={analysisState}
+          />
           <button
             onClick={() => setSecurityPanelOpen(!securityPanelOpen)}
-            className="p-2 rounded-xl border border-slate-200 text-slate-500 hover:text-deepsea-800 hover:bg-deepsea-50 hover:border-deepsea-200 transition-colors cursor-pointer"
-            title={securityPanelOpen ? 'Hide security panel' : 'Show security panel'}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+              securityPanelOpen 
+                ? 'bg-deepsea-900 text-white border-deepsea-900 shadow-xs' 
+                : 'border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-deepsea-900'
+            }`}
+            title={securityPanelOpen ? 'Hide AI Security Panel' : 'Show AI Security Panel'}
+            aria-label="Toggle AI Security Panel"
           >
-            {securityPanelOpen ? <PanelRightClose className="w-4 h-4" /> : <PanelRight className="w-4 h-4" />}
+            <Shield className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">AI Security</span>
+            {securityPanelOpen ? <PanelRightClose className="w-3.5 h-3.5" /> : <PanelRight className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>
@@ -304,23 +383,34 @@ export default function CallScreen({ roomData, onLeaveCall }) {
           <div className="h-16" />
         </div>
 
-        {/* Security Panel — right sidebar */}
-        {securityPanelOpen && (
-          <div className="hidden lg:flex w-72 xl:w-80 flex-col border-l border-slate-200 shrink-0 bg-white">
-            <SecurityPanel analysisResult={analysisResult} />
-          </div>
-        )}
       </div>
 
-      {/* Mobile Security Panel (bottom sheet) */}
-      {securityPanelOpen && (
-        <div className="lg:hidden border-t border-slate-200 bg-white max-h-48 overflow-y-auto">
-          <SecurityPanel analysisResult={analysisResult} isCollapsible={true} />
-        </div>
+      {/* Slideable AI Security Panel Drawer */}
+      <SecurityPanel
+        isOpen={securityPanelOpen}
+        onClose={() => setSecurityPanelOpen(false)}
+        analysisState={analysisState}
+        faceData={faceData}
+        lastAnalyzedAt={lastAnalyzedAt}
+      />
+
+      {/* Floating Right-Edge Tab Trigger when closed */}
+      {!securityPanelOpen && (
+        <button
+          onClick={() => setSecurityPanelOpen(true)}
+          className="fixed right-0 top-1/2 -translate-y-1/2 z-30 hidden sm:flex items-center space-x-1 py-3 px-2 rounded-l-xl bg-deepsea-900/90 hover:bg-deepsea-900 text-white shadow-xl backdrop-blur-xs border border-r-0 border-white/20 transition-all cursor-pointer group hover:pl-3"
+          title="Open AI Security Panel"
+          aria-label="Open AI Security Panel"
+        >
+          <Shield className="w-4 h-4 text-sky-400 group-hover:scale-110 transition-transform" />
+          <span className="text-[11px] font-bold [writing-mode:vertical-lr] rotate-180 tracking-wider">
+            AI SECURITY
+          </span>
+        </button>
       )}
 
       {/* Floating Bottom Controls */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40">
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-30">
         <CallControls
           isMuted={isMuted}
           isCameraOff={isCameraOff}
@@ -329,6 +419,21 @@ export default function CallScreen({ roomData, onLeaveCall }) {
           onEndCall={endCall}
         />
       </div>
+
+      {/* Hidden elements for background frame analysis */}
+      <video
+        ref={hiddenVideoRef}
+        autoPlay
+        playsInline
+        muted
+        style={{ display: 'none' }}
+        aria-hidden="true"
+      />
+      <canvas
+        ref={hiddenCanvasRef}
+        style={{ display: 'none' }}
+        aria-hidden="true"
+      />
 
       {/* Permission Modal */}
       <PermissionModal

@@ -12,8 +12,10 @@ import {
   CheckCircle2, 
   AlertCircle, 
   RefreshCw, 
-  Sliders 
+  Sliders,
+  Server
 } from 'lucide-react';
+import { checkBackendHealth } from '../services/api';
 
 export default function SettingsPage({ theme = 'light', onToggleTheme }) {
   // Profile state
@@ -39,6 +41,19 @@ export default function SettingsPage({ theme = 'light', onToggleTheme }) {
   // Security preferences
   const [strictThreshold, setStrictThreshold] = useState(false);
   const [alertOnSuspicious, setAlertOnSuspicious] = useState(true);
+
+  // Backend connection status
+  const [backendState, setBackendState] = useState('checking'); // 'checking' | 'connected' | 'unavailable'
+
+  const verifyBackend = async () => {
+    setBackendState('checking');
+    const res = await checkBackendHealth();
+    if (res.available) {
+      setBackendState('connected');
+    } else {
+      setBackendState('unavailable');
+    }
+  };
 
   // Scan hardware devices
   const scanDevices = async () => {
@@ -84,6 +99,7 @@ export default function SettingsPage({ theme = 'light', onToggleTheme }) {
 
   useEffect(() => {
     scanDevices();
+    verifyBackend();
   }, []);
 
   const handleSaveProfile = (e) => {
@@ -349,6 +365,45 @@ export default function SettingsPage({ theme = 'light', onToggleTheme }) {
                 onChange={e => setAlertOnSuspicious(e.target.checked)}
                 className="rounded border-slate-300 text-deepsea-800 focus:ring-deepsea-800"
               />
+            </div>
+
+            {/* FastAPI AI Service Connection Status */}
+            <div className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 rounded-lg bg-deepsea-100 dark:bg-slate-800 flex items-center justify-center text-deepsea-800 dark:text-sky-400">
+                  <Server className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-800 dark:text-slate-200">AI Backend Service (FastAPI)</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Port 8000 &bull; Microservice for liveness, deepfake & rPPG analysis</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full flex items-center space-x-1.5 ${
+                  backendState === 'connected' ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-400' :
+                  backendState === 'checking' ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-400' :
+                  'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-400'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    backendState === 'connected' ? 'bg-emerald-500' :
+                    backendState === 'checking' ? 'bg-amber-500 animate-pulse' :
+                    'bg-rose-500'
+                  }`} />
+                  <span>
+                    {backendState === 'connected' && 'Backend connected.'}
+                    {backendState === 'checking' && 'Checking connection...'}
+                    {backendState === 'unavailable' && 'Backend unavailable.'}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  onClick={verifyBackend}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  title="Re-check backend connection"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           </div>
         </section>

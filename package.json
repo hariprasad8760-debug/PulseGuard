@@ -8,7 +8,10 @@
     "build": "npm run build --prefix client",
     "server": "node server/index.js",
     "client": "npm run dev --prefix client",
+    "backend:python": "backend\\venv\\Scripts\\uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload",
+    "backend:test": "backend\\venv\\Scripts\\pytest backend -v",
     "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "dev:all": "concurrently \"npm run server\" \"npm run client\" \"npm run backend:python\"",
     "install:all": "npm install --prefix server && npm install --prefix client"
   },
   "keywords": [
