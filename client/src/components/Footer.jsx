@@ -1,7 +1,7 @@
 import React from 'react';
 import { Shield, Lock, Eye, Cpu } from 'lucide-react';
 
-export default function Footer() {
+export default function Footer({ onNavigate }) {
   return (
     <footer className="bg-slate-900 dark:bg-slate-950 text-slate-400 mt-auto border-t border-slate-800 dark:border-slate-900 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
@@ -27,8 +27,22 @@ export default function Footer() {
           <div className="space-y-3">
             <h4 className="text-white font-semibold text-sm uppercase tracking-wider">Platform</h4>
             <ul className="space-y-2 text-sm">
-              <li>Real-Time Video Calling</li>
-              <li>Secure Room Management</li>
+              <li>
+                <button 
+                  onClick={() => onNavigate && onNavigate('home')} 
+                  className="hover:text-white transition-colors cursor-pointer text-left"
+                >
+                  Real-Time Video Calling
+                </button>
+              </li>
+              <li>
+                <button 
+                  onClick={() => onNavigate && onNavigate('login')} 
+                  className="text-sky-400 hover:text-sky-300 transition-colors cursor-pointer text-left font-medium"
+                >
+                  Sign In / Register
+                </button>
+              </li>
               <li className="flex items-center space-x-1.5">
                 <span>Liveness Detection</span>
                 <span className="text-[10px] bg-deepsea-900/80 text-sky-400 px-1.5 py-0.5 rounded border border-deepsea-700/50 font-medium">Coming Soon</span>

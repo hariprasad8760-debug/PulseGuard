@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     # Node.js WebRTC signaling server URL
     NODE_SIGNALING_URL: str = "http://localhost:3001"
 
+    # SMTP / Email Service configuration for Gmail password reset
+    SMTP_SERVER: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "PulseGuard AI Security"
+    FRONTEND_URL: str = "http://localhost:3000"
+
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def assemble_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:

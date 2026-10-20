@@ -1,5 +1,19 @@
 import React, { useState } from 'react';
-import { Shield, Menu, X, Home, HelpCircle, Info, Settings, ChevronRight, Sun, Moon } from 'lucide-react';
+import { 
+  Shield, 
+  Menu, 
+  X, 
+  Home, 
+  HelpCircle, 
+  Info, 
+  Settings, 
+  ChevronRight, 
+  Sun, 
+  Moon,
+  LogIn,
+  LogOut,
+  User
+} from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'home',         label: 'Home',             icon: Home },
@@ -8,7 +22,14 @@ const NAV_ITEMS = [
   { id: 'settings',     label: 'Settings',         icon: Settings },
 ];
 
-export default function Header({ currentPage, onNavigate, theme = 'light', onToggleTheme }) {
+export default function Header({ 
+  currentPage, 
+  onNavigate, 
+  theme = 'light', 
+  onToggleTheme,
+  currentUser = null,
+  onLogout
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleNav = (id) => {
@@ -31,7 +52,7 @@ export default function Header({ currentPage, onNavigate, theme = 'light', onTog
           <span className="font-bold text-xl text-deepsea-900 dark:text-white tracking-tight">PulseGuard AI</span>
         </button>
 
-        {/* Desktop Nav + Dark Mode Toggle */}
+        {/* Desktop Nav + Dark Mode Toggle + Auth Profile / Sign In */}
         <div className="hidden md:flex items-center space-x-3">
           <nav className="flex items-center space-x-1">
             {NAV_ITEMS.map(({ id, label }) => (
@@ -64,6 +85,49 @@ export default function Header({ currentPage, onNavigate, theme = 'light', onTog
               )}
             </button>
           )}
+
+          {/* User Profile Pill or Sign In Button */}
+          {currentUser ? (
+            <div className="flex items-center space-x-2 pl-2 border-l border-slate-200 dark:border-slate-800">
+              <button
+                onClick={() => handleNav('settings')}
+                className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-deepsea-50 dark:bg-slate-800 border border-deepsea-100 dark:border-slate-700 hover:bg-deepsea-100 dark:hover:bg-slate-700/80 transition-colors cursor-pointer text-left"
+                title="View Account Settings"
+              >
+                <div className="w-6 h-6 rounded-lg bg-deepsea-900 dark:bg-sky-600 text-white flex items-center justify-center text-xs font-bold">
+                  {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+                </div>
+                <div className="hidden lg:block">
+                  <p className="text-xs font-bold text-deepsea-900 dark:text-white leading-tight truncate max-w-[110px]">
+                    {currentUser.name}
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight truncate max-w-[110px]">
+                    {currentUser.role || 'Participant'}
+                  </p>
+                </div>
+              </button>
+              <button
+                onClick={onLogout}
+                className="p-2 rounded-xl text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors cursor-pointer"
+                title="Sign Out"
+                aria-label="Sign Out"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={() => handleNav('login')}
+              className={`inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer ${
+                currentPage === 'login'
+                  ? 'bg-deepsea-900 text-white shadow-md dark:bg-sky-600'
+                  : 'bg-deepsea-800 hover:bg-deepsea-900 dark:bg-deepsea-700 dark:hover:bg-deepsea-600 text-white'
+              }`}
+            >
+              <LogIn className="w-4 h-4 text-sky-400" />
+              <span>Sign In</span>
+            </button>
+          )}
         </div>
 
         {/* Mobile menu & theme controls */}
@@ -94,7 +158,7 @@ export default function Header({ currentPage, onNavigate, theme = 'light', onTog
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg">
+        <div className="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-lg animate-fadeIn">
           <nav className="px-4 py-3 space-y-1">
             {NAV_ITEMS.map(({ id, label, icon: Icon }) => (
               <button
@@ -113,6 +177,38 @@ export default function Header({ currentPage, onNavigate, theme = 'light', onTog
                 <ChevronRight className="w-4 h-4 text-slate-400" />
               </button>
             ))}
+
+            {/* Mobile Auth Item */}
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
+              {currentUser ? (
+                <div className="p-2.5 rounded-xl bg-deepsea-50 dark:bg-slate-800 border border-deepsea-100 dark:border-slate-700 flex items-center justify-between">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-deepsea-900 dark:bg-sky-600 text-white flex items-center justify-center font-bold text-xs">
+                      {currentUser.name ? currentUser.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-deepsea-900 dark:text-white">{currentUser.name}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">{currentUser.role}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { onLogout(); setMobileOpen(false); }}
+                    className="p-1.5 rounded-lg text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-950 transition-colors"
+                    title="Sign Out"
+                  >
+                    <LogOut className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleNav('login')}
+                  className="w-full flex items-center justify-center space-x-2 py-2.5 rounded-xl bg-deepsea-800 hover:bg-deepsea-900 text-white font-bold text-sm shadow-md"
+                >
+                  <LogIn className="w-4 h-4 text-sky-400" />
+                  <span>Sign In / Register</span>
+                </button>
+              )}
+            </div>
           </nav>
         </div>
       )}

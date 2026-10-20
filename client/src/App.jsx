@@ -5,13 +5,18 @@ import HomePage from './pages/HomePage';
 import HowItWorksPage from './pages/HowItWorksPage';
 import AboutPage from './pages/AboutPage';
 import SettingsPage from './pages/SettingsPage';
+import LoginPage from './pages/LoginPage';
 import CallScreen from './components/CallScreen';
+import { getCurrentUser, logoutUser } from './services/api';
 
 export default function App() {
-  const [currentPage, setCurrentPage] = useState('home'); // 'home' | 'security' | 'how-it-works' | 'about' | 'settings'
+  const [currentPage, setCurrentPage] = useState('home'); // 'home' | 'security' | 'how-it-works' | 'about' | 'settings' | 'login'
   const [currentScreen, setCurrentScreen] = useState('page'); // 'page' | 'call'
   const [roomData, setRoomData] = useState(null); // { roomCode, userName, isHost }
   
+  // Authenticated user state
+  const [currentUser, setCurrentUser] = useState(() => getCurrentUser());
+
   // Theme state ('light' | 'dark')
   const [theme, setTheme] = useState(() => localStorage.getItem('pg_theme') || 'light');
 
@@ -54,7 +59,40 @@ export default function App() {
     }
   };
 
+  const handleLoginSuccess = (userData) => {
+    setCurrentUser(userData);
+    setCurrentPage('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    setCurrentUser(null);
+    setCurrentPage('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const isInCall = currentScreen === 'call';
+
+  // Standalone Individual Login Page (gates the application until logged in)
+  if (!currentUser) {
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        theme={theme}
+        onToggleTheme={handleToggleTheme}
+        onGuestAccess={() => {
+          const guestUser = {
+            name: 'Guest User',
+            email: 'guest@pulseguard.ai',
+            role: 'Participant',
+            token: 'pg_guest_' + Math.random().toString(36).substring(2)
+          };
+          handleLoginSuccess(guestUser);
+        }}
+      />
+    );
+  }
 
   return (
     <div className={`${
@@ -68,6 +106,8 @@ export default function App() {
           onNavigate={handleNavigate}
           theme={theme}
           onToggleTheme={handleToggleTheme}
+          currentUser={currentUser}
+          onLogout={handleLogout}
         />
       )}
 
@@ -82,7 +122,11 @@ export default function App() {
         ) : (
           <>
             {currentPage === 'home' && (
-              <HomePage onEnterRoom={handleEnterRoom} />
+              <HomePage 
+                onEnterRoom={handleEnterRoom} 
+                currentUser={currentUser}
+                onRequireLogin={handleLogout}
+              />
             )}
             {currentPage === 'how-it-works' && (
               <HowItWorksPage onNavigate={handleNavigate} />
@@ -98,7 +142,7 @@ export default function App() {
       </main>
 
       {/* Footer — hidden during call */}
-      {!isInCall && <Footer />}
+      {!isInCall && <Footer onNavigate={handleNavigate} />}
     </div>
   );
 }

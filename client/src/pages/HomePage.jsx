@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import {
   Shield, Video, Users, ArrowRight, Lock, Cpu, Globe,
   Eye, Brain, Activity, CheckCircle, Zap, Copy, Check,
-  KeyRound, User, AlertCircle, X, ShieldCheck, Sparkles, ChevronDown
+  KeyRound, User, AlertCircle, X, ShieldCheck, Sparkles, ChevronDown, LogIn
 } from 'lucide-react';
 import { getSocket } from '../services/socket';
 
 // ─── Create Room Inline Card ──────────────────────────────────────────────────
-function CreateRoomCard({ onRoomCreated }) {
+function CreateRoomCard({ onRoomCreated, isGuest = false, onGuestBlocked }) {
   const [step, setStep] = useState(1);
   const [userName, setUserName] = useState('');
   const [maxParticipants, setMaxParticipants] = useState(5);
@@ -18,6 +18,10 @@ function CreateRoomCard({ onRoomCreated }) {
 
   const handleContinue = (e) => {
     e?.preventDefault();
+    if (isGuest && onGuestBlocked) {
+      onGuestBlocked();
+      return;
+    }
     const name = userName.trim();
     if (!name) { setError('Please enter your name to continue.'); return; }
     setError('');
@@ -130,8 +134,16 @@ function CreateRoomCard({ onRoomCreated }) {
           </div>
           <div className="flex space-x-2 mt-auto">
             <button onClick={reset} className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-sm font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">Back</button>
-            <button onClick={() => onRoomCreated({ roomCode: generatedCode, userName: userName.trim(), isHost: true, maxParticipants })}
-              className="flex-1 py-2.5 rounded-xl bg-deepsea-800 dark:bg-deepsea-700 hover:bg-deepsea-900 dark:hover:bg-deepsea-600 text-white text-sm font-semibold flex items-center justify-center space-x-2 shadow-md transition-all cursor-pointer">
+            <button 
+              onClick={() => {
+                if (isGuest && onGuestBlocked) {
+                  onGuestBlocked();
+                  return;
+                }
+                onRoomCreated({ roomCode: generatedCode, userName: userName.trim(), isHost: true, maxParticipants });
+              }}
+              className="flex-1 py-2.5 rounded-xl bg-deepsea-800 dark:bg-deepsea-700 hover:bg-deepsea-900 dark:hover:bg-deepsea-600 text-white text-sm font-semibold flex items-center justify-center space-x-2 shadow-md transition-all cursor-pointer"
+            >
               <span>Enter Room</span><ArrowRight className="w-4 h-4" />
             </button>
           </div>
@@ -142,7 +154,7 @@ function CreateRoomCard({ onRoomCreated }) {
 }
 
 // ─── Join Room Inline Card ────────────────────────────────────────────────────
-function JoinRoomCard({ onRoomJoined }) {
+function JoinRoomCard({ onRoomJoined, isGuest = false, onGuestBlocked }) {
   const [userName, setUserName] = useState('');
   const [roomCode, setRoomCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -150,6 +162,10 @@ function JoinRoomCard({ onRoomJoined }) {
 
   const handleJoin = (e) => {
     e?.preventDefault();
+    if (isGuest && onGuestBlocked) {
+      onGuestBlocked();
+      return;
+    }
     const name = userName.trim();
     const code = roomCode.trim().toUpperCase();
     if (!name) { setError('Please enter your name.'); return; }
@@ -254,9 +270,16 @@ function FeatureCard({ icon: Icon, title, description, badge, color = 'deepsea' 
 }
 
 // ─── HomePage ─────────────────────────────────────────────────────────────────
-export default function HomePage({ onEnterRoom }) {
+export default function HomePage({ onEnterRoom, currentUser = null, onRequireLogin }) {
+  const [showGuestLockModal, setShowGuestLockModal] = useState(false);
+  const isGuest = Boolean(currentUser?.isGuest);
+
+  const handleGuestBlock = () => {
+    setShowGuestLockModal(true);
+  };
+
   return (
-    <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 transition-colors duration-200">
+    <div className="flex-1 flex flex-col bg-white dark:bg-slate-950 transition-colors duration-200 relative">
       {/* Hero Section */}
       <section className="bg-white dark:bg-slate-950 border-b border-slate-100 dark:border-slate-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-24 text-center">
@@ -275,16 +298,39 @@ export default function HomePage({ onEnterRoom }) {
           </p>
 
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
-            <a href="#secure-room"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-deepsea-800 dark:bg-deepsea-700 hover:bg-deepsea-900 dark:hover:bg-deepsea-600 text-white font-bold text-sm shadow-lg shadow-deepsea-800/20 flex items-center justify-center space-x-2 transition-all cursor-pointer">
-              <Video className="w-4 h-4" />
-              <span>Create Secure Room</span>
-            </a>
-            <a href="#secure-room"
-              className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-white dark:bg-slate-900 border-2 border-deepsea-800 dark:border-sky-500 text-deepsea-800 dark:text-sky-300 hover:bg-deepsea-50 dark:hover:bg-slate-800 font-bold text-sm flex items-center justify-center space-x-2 transition-all cursor-pointer">
-              <Users className="w-4 h-4" />
-              <span>Join Secure Room</span>
-            </a>
+            {isGuest ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleGuestBlock}
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-deepsea-800 dark:bg-deepsea-700 hover:bg-deepsea-900 dark:hover:bg-deepsea-600 text-white font-bold text-sm shadow-lg shadow-deepsea-800/20 flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                >
+                  <Video className="w-4 h-4" />
+                  <span>Create Secure Room</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGuestBlock}
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-white dark:bg-slate-900 border-2 border-deepsea-800 dark:border-sky-500 text-deepsea-800 dark:text-sky-300 hover:bg-deepsea-50 dark:hover:bg-slate-800 font-bold text-sm flex items-center justify-center space-x-2 transition-all cursor-pointer"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Join Secure Room</span>
+                </button>
+              </>
+            ) : (
+              <>
+                <a href="#secure-room"
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-deepsea-800 dark:bg-deepsea-700 hover:bg-deepsea-900 dark:hover:bg-deepsea-600 text-white font-bold text-sm shadow-lg shadow-deepsea-800/20 flex items-center justify-center space-x-2 transition-all cursor-pointer">
+                  <Video className="w-4 h-4" />
+                  <span>Create Secure Room</span>
+                </a>
+                <a href="#secure-room"
+                  className="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-white dark:bg-slate-900 border-2 border-deepsea-800 dark:border-sky-500 text-deepsea-800 dark:text-sky-300 hover:bg-deepsea-50 dark:hover:bg-slate-800 font-bold text-sm flex items-center justify-center space-x-2 transition-all cursor-pointer">
+                  <Users className="w-4 h-4" />
+                  <span>Join Secure Room</span>
+                </a>
+              </>
+            )}
           </div>
 
           {/* Trust badges */}
@@ -335,11 +381,66 @@ export default function HomePage({ onEnterRoom }) {
             <p className="mt-2 text-slate-600 dark:text-slate-400 text-sm max-w-xl mx-auto">Create or join a private room for a real-time video call with up to 5 participants.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <CreateRoomCard onRoomCreated={onEnterRoom} />
-            <JoinRoomCard onRoomJoined={onEnterRoom} />
+            <CreateRoomCard 
+              onRoomCreated={onEnterRoom} 
+              isGuest={isGuest} 
+              onGuestBlocked={handleGuestBlock} 
+            />
+            <JoinRoomCard 
+              onRoomJoined={onEnterRoom} 
+              isGuest={isGuest} 
+              onGuestBlocked={handleGuestBlock} 
+            />
           </div>
         </div>
       </section>
+
+      {/* ─── CENTER-SCREEN MODAL: GUEST HAS ONLY SEE PRIVILEGE ─── */}
+      {showGuestLockModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-md p-4 animate-fadeIn">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 max-w-md w-full shadow-2xl text-center space-y-5 animate-scaleUp">
+            
+            {/* Lock Symbol Icon */}
+            <div className="w-20 h-20 rounded-3xl bg-amber-50 dark:bg-amber-950/70 border-2 border-amber-300 dark:border-amber-700/80 flex items-center justify-center text-amber-600 dark:text-amber-400 mx-auto shadow-lg shadow-amber-500/10">
+              <Lock className="w-10 h-10" />
+            </div>
+
+            {/* Title & Description */}
+            <div className="space-y-2">
+              <h3 className="text-xl sm:text-2xl font-extrabold text-deepsea-900 dark:text-white tracking-tight">
+                Guest Access — View Privilege Only
+              </h3>
+              <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                Guest accounts have view-only privileges. Please sign in or create an account to start, host, or join secure video calls.
+              </p>
+            </div>
+
+            {/* Action Buttons in Same Popup */}
+            <div className="space-y-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowGuestLockModal(false);
+                  if (onRequireLogin) onRequireLogin();
+                }}
+                className="w-full py-3.5 px-5 rounded-2xl bg-deepsea-800 hover:bg-deepsea-900 dark:bg-sky-600 dark:hover:bg-sky-500 text-white font-bold text-sm shadow-lg flex items-center justify-center space-x-2 transition-all cursor-pointer active:scale-[0.99]"
+              >
+                <LogIn className="w-4 h-4" />
+                <span>Log In to Continue Video Call</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowGuestLockModal(false)}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                Cancel & Continue Viewing
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
 
       {/* Use Cases */}
       <section className="bg-slate-50/60 dark:bg-slate-900/40 py-14">

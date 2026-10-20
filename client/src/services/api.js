@@ -160,3 +160,41 @@ export async function detectFaceFromFrame(frameBase64, roomCode = null) {
   }
 }
 
+/**
+ * Retrieves the currently authenticated user profile from local storage.
+ *
+ * @returns {{ name: string, email: string, role: string, token: string } | null}
+ */
+export function getCurrentUser() {
+  const token = localStorage.getItem('pg_auth_token');
+  const name = localStorage.getItem('pg_user_name');
+  const email = localStorage.getItem('pg_user_email');
+  const role = localStorage.getItem('pg_user_role');
+
+  if (!token || !name) {
+    return null;
+  }
+
+  return { token, name, email: email || '', role: role || 'Participant' };
+}
+
+/**
+ * Clears authentication session tokens.
+ */
+export function logoutUser() {
+  localStorage.removeItem('pg_auth_token');
+  localStorage.removeItem('pg_user_name');
+  localStorage.removeItem('pg_user_email');
+  localStorage.removeItem('pg_user_role');
+}
+
+/**
+ * Returns whether a user session is active.
+ *
+ * @returns {boolean}
+ */
+export function isAuthenticated() {
+  return Boolean(localStorage.getItem('pg_auth_token'));
+}
+
+

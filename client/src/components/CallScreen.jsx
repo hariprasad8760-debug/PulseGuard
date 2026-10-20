@@ -251,12 +251,12 @@ export default function CallScreen({ roomData, onLeaveCall }) {
         </div>
       </div>
 
-      {/* Main Call Viewport (Full Screen video stage) */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Primary Video Stage */}
+      {/* Main Call Viewport (Auto-Adjusting Side-by-Side Layout) */}
+      <div className="flex-1 flex flex-row overflow-hidden relative w-full h-full">
+        {/* Primary Video Stage — Automatically resizes when AI Security screen opens */}
         <div 
           ref={stageContainerRef}
-          className="flex-1 relative flex flex-col p-3 sm:p-4 overflow-hidden bg-slate-900"
+          className="flex-1 min-w-0 h-full relative flex flex-col p-3 sm:p-4 overflow-hidden bg-slate-900 transition-all duration-300 ease-in-out"
         >
           {/* STAGE CONTAINER */}
           <div className="flex-1 w-full h-full relative overflow-hidden rounded-2xl flex items-center justify-center">
@@ -383,16 +383,24 @@ export default function CallScreen({ roomData, onLeaveCall }) {
           <div className="h-16" />
         </div>
 
+        {/* Docked AI Security Screen (Auto-Adjusts Side-by-Side without overlaying) */}
+        <div
+          className={`h-full shrink-0 border-l border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 transition-all duration-300 ease-in-out flex flex-col z-20 ${
+            securityPanelOpen
+              ? 'w-full sm:w-80 md:w-96 xl:w-[420px] opacity-100'
+              : 'w-0 overflow-hidden border-l-0 opacity-0 pointer-events-none'
+          }`}
+        >
+          <SecurityPanel
+            isOpen={securityPanelOpen}
+            onClose={() => setSecurityPanelOpen(false)}
+            analysisState={analysisState}
+            faceData={faceData}
+            lastAnalyzedAt={lastAnalyzedAt}
+            isDocked={true}
+          />
+        </div>
       </div>
-
-      {/* Slideable AI Security Panel Drawer */}
-      <SecurityPanel
-        isOpen={securityPanelOpen}
-        onClose={() => setSecurityPanelOpen(false)}
-        analysisState={analysisState}
-        faceData={faceData}
-        lastAnalyzedAt={lastAnalyzedAt}
-      />
 
       {/* Floating Right-Edge Tab Trigger when closed */}
       {!securityPanelOpen && (

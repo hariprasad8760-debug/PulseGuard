@@ -22,7 +22,8 @@ export default function SecurityPanel({
   onClose,
   analysisState = 'inconclusive', // 'analyzing' | 'available' | 'unavailable' | 'inconclusive'
   faceData = null,
-  lastAnalyzedAt = null
+  lastAnalyzedAt = null,
+  isDocked = false
 }) {
   const [technicalExpanded, setTechnicalExpanded] = useState(false);
   const [backendState, setBackendState] = useState('checking'); // 'checking' | 'connected' | 'unavailable'
@@ -95,8 +96,8 @@ export default function SecurityPanel({
 
   return (
     <>
-      {/* Mobile Backdrop Overlay */}
-      {isOpen && (
+      {/* Mobile Backdrop Overlay (only when not docked side-by-side) */}
+      {!isDocked && isOpen && (
         <div
           onClick={onClose}
           className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-30 sm:hidden transition-opacity"
@@ -104,11 +105,15 @@ export default function SecurityPanel({
         />
       )}
 
-      {/* Slideable Right-Side Drawer */}
+      {/* Security Panel (Docked Column or Floating Drawer) */}
       <aside
-        className={`fixed inset-y-0 right-0 z-40 w-full sm:w-96 md:w-[420px] bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out font-sans select-none ${
-          isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
-        }`}
+        className={
+          isDocked
+            ? "w-full h-full bg-white dark:bg-slate-900 flex flex-col font-sans select-none overflow-hidden"
+            : `fixed inset-y-0 right-0 z-40 w-full sm:w-96 md:w-[420px] bg-white dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col transform transition-transform duration-300 ease-in-out font-sans select-none ${
+                isOpen ? 'translate-x-0' : 'translate-x-full pointer-events-none'
+              }`
+        }
         role="region"
         aria-label="PulseGuard Live Security Analysis Panel"
       >
