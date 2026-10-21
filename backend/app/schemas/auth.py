@@ -33,23 +33,34 @@ class AuthResponse(BaseModel):
 
 
 class ForgotPasswordRequest(BaseModel):
-    """Payload to request password reset."""
+    """Payload to request OTP password reset."""
     email: str = Field(..., description="Target Gmail or email address")
 
 
 class ForgotPasswordResponse(BaseModel):
-    """Response returned upon dispatching reset email."""
+    """Response returned upon dispatching OTP email."""
     status: str = Field(default="success")
     email: str
     message: str
-    reset_token: str
-    reset_url: str
     sent: bool = Field(default=True)
+
+
+class VerifyOtpRequest(BaseModel):
+    """Payload to verify the 4-digit OTP."""
+    email: str = Field(..., description="Email the OTP was sent to")
+    otp: str = Field(..., min_length=4, max_length=4, description="4-digit OTP code")
+
+
+class VerifyOtpResponse(BaseModel):
+    """Response after OTP verification."""
+    status: str = Field(default="success")
+    message: str
+    reset_token: str = Field(default="", description="Short-lived token to authorise password reset")
 
 
 class ResetPasswordRequest(BaseModel):
     """Payload to apply new password with reset token."""
-    token: str = Field(..., description="Reset verification token")
+    token: str = Field(..., description="Reset authorisation token from OTP verification")
     new_password: str = Field(..., min_length=8, description="New strong password")
 
 

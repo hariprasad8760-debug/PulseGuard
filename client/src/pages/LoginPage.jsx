@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Shield,
   Lock,
@@ -42,13 +42,18 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
   // Forgot password modal state
   const [forgotPasswordOpen, setForgotPasswordOpen] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
-  const [resetSent, setResetSent] = useState(false);
+  // step: 'email' | 'otp' | 'newpass'
+  const [resetStep, setResetStep] = useState('email');
+  const [otpValue, setOtpValue] = useState('');
   const [resetToken, setResetToken] = useState('');
-  const [resetStatusMsg, setResetStatusMsg] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
   const [resetModalError, setResetModalError] = useState('');
+  const [resetModalSuccess, setResetModalSuccess] = useState('');
+  // 5-minute countdown (300 seconds)
+  const [otpTimer, setOtpTimer] = useState(0);
+  const timerRef = useRef(null);
 
   // Password strength calculation
   const calculatePasswordStrength = (pass) => {
@@ -227,45 +232,107 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
     }
   };
 
-  // Dispatch actual Forgot Password email via Backend SMTP / Gmail
-  const handlePasswordReset = async (e) => {
+  // ── Helper: start 5-min countdown ────────────────────────────────────
+  const startOtpTimer = () => {
+    setOtpTimer(300);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setOtpTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const formatTimer = (secs) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  const closeResetModal = () => {
+    setForgotPasswordOpen(false);
+    setResetStep('email');
+    setResetEmail('');
+    setOtpValue('');
+    setResetToken('');
+    setNewPassword('');
+    setConfirmNewPassword('');
+    setResetModalError('');
+    setResetModalSuccess('');
+    if (timerRef.current) clearInterval(timerRef.current);
+  };
+
+  // Step 1: Send OTP to email
+  const handleSendOtp = async (e) => {
     e.preventDefault();
     const email = resetEmail.trim();
     if (!email || !email.includes('@')) {
       setResetModalError('Please enter a valid email address.');
       return;
     }
-
     setIsResetting(true);
     setResetModalError('');
-
     try {
-      const response = await fetch('http://localhost:8000/api/auth/forgot-password', {
+      const res = await fetch('http://localhost:8000/api/auth/forgot-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
+        body: JSON.stringify({ email }),
       });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (response.ok && data.status === 'success') {
-        setResetToken(data.reset_token || '');
-        setResetSent(true);
-        setResetStatusMsg(data.message || `Password reset instructions sent to ${email}.`);
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === 'success') {
+        setResetStep('otp');
+        setResetModalSuccess(`A 4-digit OTP has been sent to ${email}. Valid for 5 minutes.`);
+        startOtpTimer();
       } else {
-        setResetModalError(data.detail || 'Failed to dispatch reset email. Please try again.');
+        setResetModalError(data.detail || 'Failed to send OTP. Please try again.');
       }
-    } catch (err) {
-      // Offline fallback
-      setResetSent(true);
-      setResetToken('rst_session_recovery');
-      setResetStatusMsg(`Password reset instructions prepared for ${email}.`);
+    } catch (_) {
+      setResetModalError('Unable to reach the server. Please check your connection.');
     } finally {
       setIsResetting(false);
     }
   };
 
-  // Apply new password
+  // Step 2: Verify OTP
+  const handleVerifyOtp = async (e) => {
+    e.preventDefault();
+    if (otpValue.length !== 4 || !/^\d{4}$/.test(otpValue)) {
+      setResetModalError('Please enter the 4-digit OTP sent to your email.');
+      return;
+    }
+    if (otpTimer === 0) {
+      setResetModalError('OTP has expired. Please request a new one.');
+      return;
+    }
+    setIsResetting(true);
+    setResetModalError('');
+    try {
+      const res = await fetch('http://localhost:8000/api/auth/verify-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: resetEmail.trim(), otp: otpValue }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === 'success') {
+        setResetToken(data.reset_token || '');
+        setResetStep('newpass');
+        setResetModalSuccess('OTP verified! Please set your new password.');
+        if (timerRef.current) clearInterval(timerRef.current);
+      } else {
+        setResetModalError(data.detail || 'Invalid OTP. Please try again.');
+      }
+    } catch (_) {
+      setResetModalError('Unable to reach the server. Please check your connection.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  // Step 3: Set new password
   const handleApplyNewPassword = async (e) => {
     e.preventDefault();
     if (newPassword.length < 8) {
@@ -276,36 +343,23 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
       setResetModalError('Passwords do not match.');
       return;
     }
-
     setIsResetting(true);
     setResetModalError('');
-
     try {
-      const response = await fetch('http://localhost:8000/api/auth/reset-password', {
+      const res = await fetch('http://localhost:8000/api/auth/reset-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token: resetToken,
-          new_password: newPassword
-        })
+        body: JSON.stringify({ token: resetToken, new_password: newPassword }),
       });
-
-      const data = await response.json().catch(() => ({}));
-
-      if (response.ok && data.status === 'success') {
-        setSuccessMessage('Your password has been successfully reset. Please sign in with your new password.');
-        setForgotPasswordOpen(false);
-        setResetSent(false);
-        setResetEmail('');
-        setNewPassword('');
-        setConfirmNewPassword('');
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.status === 'success') {
+        closeResetModal();
+        setSuccessMessage('Password reset successfully! You can now sign in with your new password.');
       } else {
-        setResetModalError(data.detail || 'Failed to reset password. Token may have expired.');
+        setResetModalError(data.detail || 'Failed to reset password. Please try again.');
       }
-    } catch (err) {
-      setSuccessMessage('Password updated successfully. You can now sign in.');
-      setForgotPasswordOpen(false);
-      setResetSent(false);
+    } catch (_) {
+      setResetModalError('Unable to reach the server. Please check your connection.');
     } finally {
       setIsResetting(false);
     }
@@ -474,8 +528,14 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                       <button
                         type="button"
                         onClick={() => {
+                          setResetStep('email');
                           setResetModalError('');
-                          setResetSent(false);
+                          setResetModalSuccess('');
+                          setOtpValue('');
+                          setResetToken('');
+                          setNewPassword('');
+                          setConfirmNewPassword('');
+                          setResetEmail('');
                           setForgotPasswordOpen(true);
                         }}
                         className="text-xs sm:text-sm font-semibold text-deepsea-700 dark:text-sky-400 hover:underline cursor-pointer"
@@ -729,10 +789,12 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
         <p>© {new Date().getFullYear()} PulseGuard AI. All rights reserved.</p>
       </footer>
 
-      {/* ─── MODAL: FORGOT PASSWORD (Dispatches to user Gmail & resets password) ─── */}
+      {/* ─── MODAL: FORGOT PASSWORD — 4-digit OTP flow ─── */}
       {forgotPasswordOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-fadeIn">
           <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-8 sm:p-10 max-w-md w-full shadow-2xl space-y-5">
+
+            {/* Header */}
             <div className="flex items-center space-x-3">
               <div className="w-12 h-12 rounded-2xl bg-deepsea-100 dark:bg-slate-800 flex items-center justify-center text-deepsea-800 dark:text-sky-400">
                 <KeyRound className="w-6 h-6" />
@@ -740,11 +802,14 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
               <div>
                 <h3 className="text-lg font-bold text-deepsea-900 dark:text-white">Reset Account Password</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {resetSent ? 'Set your new password below' : 'Enter your registered Gmail or email address'}
+                  {resetStep === 'email' && 'Enter your email to receive a 4-digit OTP'}
+                  {resetStep === 'otp' && 'Enter the 4-digit OTP sent to your email'}
+                  {resetStep === 'newpass' && 'Set your new password'}
                 </p>
               </div>
             </div>
 
+            {/* Error */}
             {resetModalError && (
               <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-900 text-rose-800 dark:text-rose-300 text-xs flex items-start space-x-2">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
@@ -752,9 +817,17 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
               </div>
             )}
 
-            {!resetSent ? (
-              /* Step 1: Request email dispatch */
-              <form onSubmit={handlePasswordReset} className="space-y-4">
+            {/* Success info */}
+            {resetModalSuccess && !resetModalError && (
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-300 text-xs flex items-start space-x-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <span>{resetModalSuccess}</span>
+              </div>
+            )}
+
+            {/* ── STEP 1: Enter email ── */}
+            {resetStep === 'email' && (
+              <form onSubmit={handleSendOtp} className="space-y-4">
                 <div>
                   <label className="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                     Email Address
@@ -768,47 +841,67 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                     className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-deepsea-800/20 focus:border-deepsea-800 dark:focus:border-sky-400 text-slate-900 dark:text-white font-medium"
                   />
                   <p className="mt-1.5 text-[11px] text-slate-500 dark:text-slate-400">
-                    A password reset link will be dispatched to this Gmail address.
+                    A 4-digit OTP valid for 5 minutes will be sent to this address.
                   </p>
                 </div>
                 <div className="flex items-center justify-end space-x-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForgotPasswordOpen(false);
-                      setResetModalError('');
-                    }}
-                    className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                  >
+                  <button type="button" onClick={closeResetModal}
+                    className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={isResetting}
-                    className="px-5 py-2.5 rounded-xl bg-deepsea-800 hover:bg-deepsea-900 text-white text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center space-x-2"
-                  >
-                    {isResetting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Sending to Gmail...</span>
-                      </>
-                    ) : (
-                      <span>Send Reset Link</span>
-                    )}
+                  <button type="submit" disabled={isResetting}
+                    className="px-5 py-2.5 rounded-xl bg-deepsea-800 hover:bg-deepsea-900 text-white text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center space-x-2">
+                    {isResetting ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Sending OTP...</span></> : <span>Send OTP</span>}
                   </button>
                 </div>
               </form>
-            ) : (
-              /* Step 2: Confirmation & Apply New Password directly */
-              <form onSubmit={handleApplyNewPassword} className="space-y-4">
-                <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-emerald-800 dark:text-emerald-300 text-xs sm:text-sm flex items-start space-x-2.5">
-                  <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-bold">Reset Instructions Dispatched!</p>
-                    <p className="text-xs text-emerald-700 dark:text-emerald-400 mt-0.5">{resetStatusMsg}</p>
+            )}
+
+            {/* ── STEP 2: Enter OTP ── */}
+            {resetStep === 'otp' && (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                    4-Digit OTP
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={otpValue}
+                    onChange={(e) => setOtpValue(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    placeholder="0000"
+                    required
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-2xl text-center tracking-[0.6em] font-mono focus:outline-none focus:ring-2 focus:ring-deepsea-800/20 focus:border-deepsea-800 dark:focus:border-sky-400 text-slate-900 dark:text-white font-bold"
+                  />
+                  {/* Countdown timer */}
+                  <p className={`mt-2 text-xs font-semibold text-center ${otpTimer <= 60 ? 'text-rose-500' : 'text-slate-500 dark:text-slate-400'}`}>
+                    {otpTimer > 0 ? `OTP expires in ${formatTimer(otpTimer)}` : 'OTP has expired — please request a new one.'}
+                  </p>
+                </div>
+                <div className="flex items-center justify-between pt-2">
+                  <button type="button"
+                    onClick={() => { setResetStep('email'); setOtpValue(''); setResetModalError(''); setResetModalSuccess(''); }}
+                    className="text-xs text-deepsea-700 dark:text-sky-400 hover:underline cursor-pointer font-semibold">
+                    ← Resend OTP
+                  </button>
+                  <div className="flex items-center space-x-3">
+                    <button type="button" onClick={closeResetModal}
+                      className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">
+                      Cancel
+                    </button>
+                    <button type="submit" disabled={isResetting || otpTimer === 0}
+                      className="px-5 py-2.5 rounded-xl bg-deepsea-800 hover:bg-deepsea-900 text-white text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center space-x-2">
+                      {isResetting ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Verifying...</span></> : <span>Verify OTP</span>}
+                    </button>
                   </div>
                 </div>
+              </form>
+            )}
 
+            {/* ── STEP 3: New password ── */}
+            {resetStep === 'newpass' && (
+              <form onSubmit={handleApplyNewPassword} className="space-y-4">
                 <div>
                   <label className="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                     New Password (min. 8 characters)
@@ -823,7 +916,6 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                     className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-deepsea-800/20 focus:border-deepsea-800 dark:focus:border-sky-400 text-slate-900 dark:text-white font-medium"
                   />
                 </div>
-
                 <div>
                   <label className="block text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
                     Confirm New Password
@@ -838,36 +930,19 @@ export default function LoginPage({ onLoginSuccess, theme = 'light', onToggleThe
                     className="w-full px-4 py-3 rounded-2xl border border-slate-300 dark:border-slate-700 dark:bg-slate-800 text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-deepsea-800/20 focus:border-deepsea-800 dark:focus:border-sky-400 text-slate-900 dark:text-white font-medium"
                   />
                 </div>
-
                 <div className="flex items-center justify-end space-x-3 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForgotPasswordOpen(false);
-                      setResetSent(false);
-                      setResetModalError('');
-                    }}
-                    className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                  >
+                  <button type="button" onClick={closeResetModal}
+                    className="px-5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer">
                     Cancel
                   </button>
-                  <button
-                    type="submit"
-                    disabled={isResetting}
-                    className="px-5 py-2.5 rounded-xl bg-deepsea-800 hover:bg-deepsea-900 text-white text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center space-x-2"
-                  >
-                    {isResetting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Updating Password...</span>
-                      </>
-                    ) : (
-                      <span>Update Password</span>
-                    )}
+                  <button type="submit" disabled={isResetting}
+                    className="px-5 py-2.5 rounded-xl bg-deepsea-800 hover:bg-deepsea-900 text-white text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50 flex items-center space-x-2">
+                    {isResetting ? <><Loader2 className="w-4 h-4 animate-spin" /><span>Updating...</span></> : <span>Update Password</span>}
                   </button>
                 </div>
               </form>
             )}
+
           </div>
         </div>
       )}
