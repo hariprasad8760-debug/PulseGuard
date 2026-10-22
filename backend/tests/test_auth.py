@@ -70,17 +70,30 @@ def test_register_invalid_short_password():
 
 
 def test_forgot_and_reset_password_flow():
-    """Verify forgot password generates reset token and allows resetting password."""
-    # 1. Request password reset
+    """Verify forgot password generates OTP, verifies OTP, and allows resetting password."""
+    from app.routes.auth import OTP_STORE
+
+    # 1. Request password reset (dispatches 4-digit OTP)
     forgot_payload = {"email": "dr.jane.doe@pulseguard.ai"}
     forgot_res = client.post("/api/auth/forgot-password", json=forgot_payload)
     assert forgot_res.status_code == 200
     forgot_data = forgot_res.json()
     assert forgot_data["status"] == "success"
-    assert "reset_token" in forgot_data
-    token = forgot_data["reset_token"]
+    assert "dr.jane.doe@pulseguard.ai" in OTP_STORE
+    otp = OTP_STORE["dr.jane.doe@pulseguard.ai"]["otp"]
 
-    # 2. Reset password using valid token
+    # 2. Verify OTP
+    verify_res = client.post("/api/auth/verify-otp", json={
+        "email": "dr.jane.doe@pulseguard.ai",
+        "otp": otp
+    })
+    assert verify_res.status_code == 200
+    verify_data = verify_res.json()
+    assert verify_data["status"] == "success"
+    assert "reset_token" in verify_data
+    token = verify_data["reset_token"]
+
+    # 3. Reset password using valid token
     reset_payload = {
         "token": token,
         "new_password": "BrandNewSecret2026#"
@@ -89,7 +102,7 @@ def test_forgot_and_reset_password_flow():
     assert reset_res.status_code == 200
     assert reset_res.json()["status"] == "success"
 
-    # 3. Login with updated password
+    # 4. Login with updated password
     login_payload = {
         "email": "dr.jane.doe@pulseguard.ai",
         "password": "BrandNewSecret2026#"

@@ -20,6 +20,7 @@ logger = logging.getLogger("pulseguard.backend")
 
 
 from app.services.face_service import face_service
+from app.services.rppg_service import rppg_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,6 +34,12 @@ async def lifespan(app: FastAPI):
         face_service.initialize()
     except Exception as exc:
         logger.warning("MediaPipe Face Detection deferred initialization: %s", exc)
+
+    # Initialize PhysNet rPPG Model
+    try:
+        rppg_service.initialize()
+    except Exception as exc:
+        logger.warning("PhysNet rPPG model deferred initialization: %s", exc)
         
     yield
     logger.info("Shutting down %s...", settings.APP_NAME)

@@ -161,6 +161,56 @@ export async function detectFaceFromFrame(frameBase64, roomCode = null) {
 }
 
 /**
+ * Sends a temporal sequence of face ROI frames to the PhysNet rPPG analysis API.
+ *
+ * @param {Array<{ frame_base64: string, timestamp_ms?: number }>} frames - Sequence of frames
+ * @param {number} [fps] - Optional client estimated capture frame rate
+ * @param {string} [sessionId] - Optional room or call identifier
+ * @returns {Promise<{ success: boolean, data?: object, error?: string }>}
+ */
+export async function analyzeRPPGSequence(frames, fps = null, sessionId = null) {
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch(`${API_BASE_URL}/api/rppg/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        frames,
+        fps,
+        session_id: sessionId
+      }),
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errData.detail || `HTTP ${response.status}: ${response.statusText}`
+      };
+    }
+
+    const data = await response.json();
+    return {
+      success: true,
+      data
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: err.name === 'AbortError' ? 'rPPG analysis timed out' : 'AI backend unavailable'
+    };
+  }
+}
+
+/**
  * Retrieves the currently authenticated user profile from local storage.
  *
  * @returns {{ name: string, email: string, role: string, token: string } | null}

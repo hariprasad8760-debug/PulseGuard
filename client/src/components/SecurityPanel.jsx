@@ -22,6 +22,8 @@ export default function SecurityPanel({
   onClose,
   analysisState = 'inconclusive', // 'analyzing' | 'available' | 'unavailable' | 'inconclusive'
   faceData = null,
+  rppgData = null,
+  rppgStatus = 'idle', // 'idle' | 'collecting' | 'analyzing' | 'available' | 'unavailable' | 'error'
   lastAnalyzedAt = null,
   isDocked = false
 }) {
@@ -242,6 +244,120 @@ export default function SecurityPanel({
             </div>
           </section>
 
+          {/* Section 2: Remote Photoplethysmography (rPPG) Pulse Estimation */}
+          <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
+              <div className="flex items-center space-x-2">
+                <Activity className="w-4 h-4 text-rose-500 animate-pulse" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-deepsea-900 dark:text-white">
+                  rPPG Pulse Estimation (PhysNet)
+                </h3>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                backendState === 'unavailable'
+                  ? 'bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950 dark:text-rose-400'
+                  : rppgData?.signal_available
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950 dark:text-emerald-400'
+                  : rppgStatus === 'collecting' || rppgStatus === 'analyzing'
+                  ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400'
+                  : 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400'
+              }`}>
+                {backendState === 'unavailable'
+                  ? 'UNAVAILABLE'
+                  : rppgData?.signal_available
+                  ? 'AVAILABLE'
+                  : rppgStatus === 'collecting'
+                  ? 'COLLECTING'
+                  : rppgStatus === 'analyzing'
+                  ? 'PROCESSING'
+                  : 'UNAVAILABLE'}
+              </span>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-slate-500 dark:text-slate-400">Pulse Signal:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200">
+                  {backendState === 'unavailable'
+                    ? 'Unavailable'
+                    : rppgStatus === 'collecting'
+                    ? 'Collecting frames...'
+                    : rppgStatus === 'analyzing'
+                    ? 'Processing 3D-CNN...'
+                    : rppgData?.signal_available
+                    ? 'Available'
+                    : 'Unavailable'}
+                </span>
+              </div>
+
+              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-slate-500 dark:text-slate-400">Estimated Heart Rate:</span>
+                <span className="font-bold text-slate-900 dark:text-white flex items-center space-x-1">
+                  {rppgData?.heart_rate_bpm ? (
+                    <>
+                      <span className="text-sm text-rose-600 dark:text-rose-400">{rppgData.heart_rate_bpm}</span>
+                      <span className="text-[10px] text-slate-500">BPM</span>
+                    </>
+                  ) : (
+                    <span className="font-normal text-slate-400 dark:text-slate-500">Not Available</span>
+                  )}
+                </span>
+              </div>
+
+              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-slate-500 dark:text-slate-400">Signal Quality:</span>
+                <span className="font-semibold text-slate-800 dark:text-slate-200 capitalize">
+                  {rppgData?.signal_quality && rppgData.signal_quality !== 'unavailable'
+                    ? `${rppgData.signal_quality} ${rppgData.snr_db !== null ? `(${rppgData.snr_db} dB SNR)` : ''}`
+                    : 'Insufficient Data'}
+                </span>
+              </div>
+
+              <div className="flex justify-between py-1 border-b border-slate-50 dark:border-slate-800/60">
+                <span className="text-slate-500 dark:text-slate-400">Analysis Status:</span>
+                <span className="font-semibold text-slate-700 dark:text-slate-300 capitalize">
+                  {rppgStatus === 'analyzing'
+                    ? 'Processing'
+                    : rppgStatus === 'collecting'
+                    ? 'Collecting sequence'
+                    : rppgData?.status === 'success'
+                    ? 'Completed'
+                    : rppgStatus === 'error'
+                    ? 'Error'
+                    : 'Awaiting call'}
+                </span>
+              </div>
+            </div>
+
+            {/* Micro Waveform Preview if available */}
+            {rppgData?.waveform && rppgData.waveform.length > 0 && (
+              <div className="pt-1">
+                <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1">
+                  <span>Normalized BVP Waveform (PhysNet)</span>
+                  <span>{rppgData.frames_processed} Frames</span>
+                </div>
+                <div className="h-8 w-full bg-slate-50 dark:bg-slate-800/50 rounded-lg p-1 flex items-end justify-between space-x-0.5 overflow-hidden">
+                  {rppgData.waveform.map((val, idx) => {
+                    // scale val (approx -2 to +2) to height percentage
+                    const clamped = Math.max(-2, Math.min(2, val));
+                    const heightPct = Math.round(((clamped + 2) / 4) * 100);
+                    return (
+                      <div
+                        key={idx}
+                        className="flex-1 bg-rose-400/80 rounded-xs transition-all duration-150"
+                        style={{ height: `${Math.max(10, heightPct)}%` }}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 text-[11px] text-slate-600 dark:text-slate-300 leading-snug">
+              <strong>Scientific Limitation:</strong> An unavailable pulse signal does not mean the participant is fake, and an estimated pulse alone does not prove the participant is real.
+            </div>
+          </section>
+
           {/* Section 2: Deepfake Detection */}
           <section className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2.5">
@@ -319,8 +435,14 @@ export default function SecurityPanel({
 
                 <div className="space-y-1 pt-1 text-[11px]">
                   <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
-                    <span className="text-slate-500">rPPG Analysis:</span>
-                    <span className="text-slate-400 italic">Not available yet.</span>
+                    <span className="text-slate-500">rPPG Model (PhysNet):</span>
+                    <span className="font-mono text-slate-700 dark:text-slate-300">
+                      {rppgData?.signal_available
+                        ? `${rppgData.heart_rate_bpm || '--'} BPM (${rppgData.signal_quality})`
+                        : rppgStatus === 'collecting'
+                        ? 'Collecting buffer...'
+                        : 'Active / Waiting frames'}
+                    </span>
                   </div>
                   <div className="flex justify-between py-1 border-b border-slate-100 dark:border-slate-800">
                     <span className="text-slate-500">Deepfake CNN:</span>

@@ -6,7 +6,7 @@ import CallControls from './CallControls';
 import PermissionModal from './PermissionModal';
 import SecurityPanel from './SecurityPanel';
 import SecurityIndicator from './SecurityIndicator';
-import { detectFaceFromFrame } from '../services/api';
+import { detectFaceFromFrame, analyzeRPPGSequence } from '../services/api';
 import { 
   Copy, 
   Check, 
@@ -31,6 +31,12 @@ export default function CallScreen({ roomData, onLeaveCall }) {
   const [faceData, setFaceData] = useState(null);
   const [analysisState, setAnalysisState] = useState('inconclusive'); // 'analyzing' | 'available' | 'unavailable' | 'inconclusive'
   const [lastAnalyzedAt, setLastAnalyzedAt] = useState(null);
+
+  // rPPG Pulse Estimation state (PhysNet 3D-CNN)
+  const [rppgData, setRppgData] = useState(null);
+  const [rppgStatus, setRppgStatus] = useState('idle'); // 'idle' | 'collecting' | 'analyzing' | 'available' | 'unavailable' | 'error'
+  const rppgBufferRef = useRef([]); // Stores sequence of { frame_base64, timestamp_ms }
+  const isRppgAnalyzingRef = useRef(false);
 
   const hiddenVideoRef = useRef(null);
   const hiddenCanvasRef = useRef(null);
@@ -69,6 +75,8 @@ export default function CallScreen({ roomData, onLeaveCall }) {
     if (!localStream || isCameraOff) {
       setFaceData(null);
       setAnalysisState('inconclusive');
+      rppgBufferRef.current = [];
+      setRppgStatus('idle');
       return;
     }
 
@@ -95,6 +103,7 @@ export default function CallScreen({ roomData, onLeaveCall }) {
         ctx.drawImage(video, 0, 0, 320, 240);
 
         const frameBase64 = canvas.toDataURL('image/jpeg', 0.7);
+        const captureTs = Date.now();
 
         isAnalyzingRef.current = true;
         setAnalysisState('analyzing');
@@ -103,14 +112,56 @@ export default function CallScreen({ roomData, onLeaveCall }) {
 
         if (response.success && response.data) {
           setFaceData(response.data);
-          setLastAnalyzedAt(Date.now());
+          setLastAnalyzedAt(captureTs);
           setAnalysisState(response.data.face_detected ? 'available' : 'inconclusive');
+
+          // Accumulate valid face frame in rPPG buffer
+          if (response.data.face_detected) {
+            rppgBufferRef.current.push({
+              frame_base64: frameBase64,
+              timestamp_ms: captureTs
+            });
+            // Keep buffer capped at last 32 frames (approx 16-24s of temporal window at interval)
+            if (rppgBufferRef.current.length > 32) {
+              rppgBufferRef.current.shift();
+            }
+
+            if (rppgBufferRef.current.length < 16) {
+              setRppgStatus('collecting');
+            } else if (!isRppgAnalyzingRef.current) {
+              // Dispatch rPPG PhysNet 3D-CNN analysis every time buffer has >= 16 frames
+              isRppgAnalyzingRef.current = true;
+              setRppgStatus('analyzing');
+
+              analyzeRPPGSequence([...rppgBufferRef.current], null, roomCode)
+                .then((rppgRes) => {
+                  if (rppgRes.success && rppgRes.data) {
+                    setRppgData(rppgRes.data);
+                    setRppgStatus(rppgRes.data.signal_available ? 'available' : 'unavailable');
+                  } else {
+                    setRppgStatus('error');
+                  }
+                })
+                .catch((err) => {
+                  console.warn('rPPG sequence analysis error:', err);
+                  setRppgStatus('error');
+                })
+                .finally(() => {
+                  isRppgAnalyzingRef.current = false;
+                });
+            }
+          } else {
+            // No face in current frame
+            setRppgStatus('unavailable');
+          }
         } else {
           setAnalysisState('unavailable');
+          setRppgStatus('unavailable');
         }
       } catch (err) {
         console.warn('Face detection frame capture error:', err);
         setAnalysisState('unavailable');
+        setRppgStatus('unavailable');
       } finally {
         isAnalyzingRef.current = false;
       }
@@ -119,6 +170,7 @@ export default function CallScreen({ roomData, onLeaveCall }) {
     return () => {
       clearInterval(intervalId);
       isAnalyzingRef.current = false;
+      isRppgAnalyzingRef.current = false;
     };
   }, [localStream, isCameraOff, roomCode]);
 
@@ -396,6 +448,8 @@ export default function CallScreen({ roomData, onLeaveCall }) {
             onClose={() => setSecurityPanelOpen(false)}
             analysisState={analysisState}
             faceData={faceData}
+            rppgData={rppgData}
+            rppgStatus={rppgStatus}
             lastAnalyzedAt={lastAnalyzedAt}
             isDocked={true}
           />

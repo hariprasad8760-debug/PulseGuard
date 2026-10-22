@@ -15,9 +15,9 @@ def test_status_endpoint():
     assert data["backend"]["available"] is True
     assert "modules" in data
     modules = data["modules"]
-    # In Step 2, face_detection is active while others remain not_implemented
+    # In Step 3, face_detection is active and rppg is ready/uninitialized
     assert modules["face_detection"] in ("active", "initializing")
-    assert modules["rppg"] == "not_implemented"
+    assert modules["rppg"] in ("ready", "uninitialized", "active")
     assert modules["deepfake_detection"] == "not_implemented"
     assert modules["temporal_analysis"] == "not_implemented"
     assert modules["risk_assessment"] == "not_implemented"
