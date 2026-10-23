@@ -3,8 +3,8 @@
 Covers:
 - Model initialization and checkpoint loading
 - Input validation and empty/insufficient frame handling
-- Synthetic video sequence inference test (clearly distinguished from real video)
-- HTTP API endpoints POST /api/rppg/analyze and GET /api/status
+- Synthetic video sequence inference test with facial bounding boxes
+- Verification that real model inference produces non-empty, finite waveforms
 """
 import base64
 import numpy as np
@@ -75,7 +75,8 @@ def test_rppg_synthetic_inference_pipeline():
             "frame_base64": generate_synthetic_frame_b64(
                 color=(170 + (i % 5) * 4, 130 + (i % 5) * 3, 110 + (i % 5) * 2)
             ),
-            "timestamp_ms": 1000.0 + i * 100.0
+            "timestamp_ms": 1000.0 + i * 100.0,
+            "bounding_box": {"x": 0.2, "y": 0.15, "width": 0.6, "height": 0.7}
         }
         for i in range(20)
     ]
@@ -89,6 +90,36 @@ def test_rppg_synthetic_inference_pipeline():
     assert data["effective_fps"] > 0
     assert isinstance(data["waveform"], list)
     assert len(data["waveform"]) > 0
+    # Waveform values must be finite numbers
+    for val in data["waveform"]:
+        assert isinstance(val, (int, float))
+        assert not np.isnan(val)
+        assert not np.isinf(val)
     # Verify scientific limitation disclaimer
     assert "scientific_note" in data
     assert "does not mean fake" in data["scientific_note"]
+
+
+def test_rppg_with_pulsatile_synthetic_signal():
+    """Feeds a synthetic face sequence with an injected 1.2 Hz pulse (72 BPM) to verify SNR and BPM extraction."""
+    # 20 frames with an injected subtle color modulation in the green channel
+    fps = 10.0
+    dt_ms = 1000.0 / fps
+    frames = []
+    for i in range(30):
+        t = i / fps
+        pulse_val = int(8.0 * np.sin(2 * np.pi * 1.2 * t))  # 1.2 Hz = 72 BPM
+        g_channel = int(np.clip(140 + pulse_val, 0, 255))
+        frames.append({
+            "frame_base64": generate_synthetic_frame_b64(color=(160, g_channel, 120)),
+            "timestamp_ms": 1000.0 + i * dt_ms,
+            "bounding_box": {"x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8}
+        })
+
+    response = client.post("/api/rppg/analyze", json={"frames": frames, "fps": fps})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert data["frames_processed"] == 30
+    assert data["effective_fps"] > 0
+    assert len(data["waveform"]) == 32

@@ -107,8 +107,10 @@ class RPPGService:
     def get_status(self) -> str:
         return self.status
 
-    def decode_and_crop_frame(self, frame_b64: str) -> Optional[np.ndarray]:
-        """Decodes base64 image and crops/resizes it to (64, 64) in RGB [0, 1]."""
+    def decode_and_crop_frame(
+        self, frame_b64: str, bounding_box: Optional[Dict[str, float]] = None
+    ) -> Optional[np.ndarray]:
+        """Decodes base64 image and crops/resizes the facial region to (64, 64) in RGB [0, 1]."""
         try:
             if "," in frame_b64:
                 frame_b64 = frame_b64.split(",", 1)[1]
@@ -120,13 +122,33 @@ class RPPGService:
 
             # Convert BGR to RGB
             img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-
-            # Central face crop if aspect ratio is rectangular, or resize
             h, w = img_rgb.shape[:2]
-            min_dim = min(h, w)
-            start_y = (h - min_dim) // 2
-            start_x = (w - min_dim) // 2
-            cropped = img_rgb[start_y:start_y + min_dim, start_x:start_x + min_dim]
+
+            # If a detected face bounding box is provided, crop specifically around the face
+            if bounding_box and all(k in bounding_box for k in ("x", "y", "width", "height")):
+                bx = max(0.0, min(1.0, float(bounding_box["x"])))
+                by = max(0.0, min(1.0, float(bounding_box["y"])))
+                bw = max(0.0, min(1.0, float(bounding_box["width"])))
+                bh = max(0.0, min(1.0, float(bounding_box["height"])))
+
+                # Add 10% context padding around the face box
+                pad_w = bw * 0.1
+                pad_h = bh * 0.1
+                x1 = int(max(0, (bx - pad_w) * w))
+                y1 = int(max(0, (by - pad_h) * h))
+                x2 = int(min(w, (bx + bw + pad_w) * w))
+                y2 = int(min(h, (by + bh + pad_h) * h))
+
+                if (x2 - x1) > 10 and (y2 - y1) > 10:
+                    cropped = img_rgb[y1:y2, x1:x2]
+                else:
+                    cropped = img_rgb
+            else:
+                # Central crop fallback
+                min_dim = min(h, w)
+                start_y = (h - min_dim) // 2
+                start_x = (w - min_dim) // 2
+                cropped = img_rgb[start_y:start_y + min_dim, start_x:start_x + min_dim]
 
             resized = cv2.resize(cropped, (CROP_SIZE, CROP_SIZE), interpolation=cv2.INTER_AREA)
             # Normalize to float32 [0, 1]
@@ -189,7 +211,8 @@ class RPPGService:
         self,
         frame_base64_list: List[str],
         client_fps: Optional[float] = None,
-        timestamps_ms: Optional[List[float]] = None
+        timestamps_ms: Optional[List[float]] = None,
+        bounding_boxes: Optional[List[Optional[Dict[str, float]]]] = None
     ) -> Dict[str, Any]:
         """Processes a sequence of facial frames using the real PhysNet 3D-CNN model."""
         # Ensure model is initialized
@@ -209,12 +232,17 @@ class RPPGService:
                     "message": "rPPG model weights are unavailable or failed to initialize."
                 }
 
-        # 1. Decode valid frames
+        # 1. Decode valid frames with bounding box ROIs if available
         valid_frames: List[np.ndarray] = []
-        for b64_str in frame_base64_list:
-            frame_arr = self.decode_and_crop_frame(b64_str)
+        valid_timestamps: List[float] = []
+
+        for idx, b64_str in enumerate(frame_base64_list):
+            bbox = bounding_boxes[idx] if (bounding_boxes and idx < len(bounding_boxes)) else None
+            frame_arr = self.decode_and_crop_frame(b64_str, bounding_box=bbox)
             if frame_arr is not None:
                 valid_frames.append(frame_arr)
+                if timestamps_ms and idx < len(timestamps_ms):
+                    valid_timestamps.append(timestamps_ms[idx])
 
         count = len(valid_frames)
         if count < MIN_REQUIRED_FRAMES:
@@ -232,14 +260,17 @@ class RPPGService:
             }
 
         # 2. Estimate effective frame rate
-        effective_fps = 15.0  # standard fallback
-        if timestamps_ms is not None and len(timestamps_ms) >= 2:
-            duration_sec = (timestamps_ms[-1] - timestamps_ms[0]) / 1000.0
-            if duration_sec > 0.5:
-                calc_fps = (len(timestamps_ms) - 1) / duration_sec
-                if 5.0 <= calc_fps <= 60.0:
+        # PhysNet trained at 6.4 - 30 FPS. Standard webcam capture runs at 10-30 FPS.
+        effective_fps = 15.0  # sensible fallback
+        if len(valid_timestamps) >= 2:
+            duration_sec = (valid_timestamps[-1] - valid_timestamps[0]) / 1000.0
+            if duration_sec > 0.3:
+                calc_fps = (len(valid_timestamps) - 1) / duration_sec
+                if 4.0 <= calc_fps <= 60.0:
                     effective_fps = calc_fps
-        elif client_fps is not None and 5.0 <= client_fps <= 60.0:
+                else:
+                    logger.debug("Calculated FPS %s out of standard bounds [4, 60], using duration.", calc_fps)
+        elif client_fps is not None and 4.0 <= client_fps <= 60.0:
             effective_fps = client_fps
 
         # 3. Stack frames into (T, H, W, 3)
@@ -259,7 +290,8 @@ class RPPGService:
                         clip_resampled[:, h, w, c] = np.interp(target_indices, orig_indices, raw_clip[:, h, w, c])
 
         # Adjust effective sampling rate post-resampling:
-        duration_sec = count / effective_fps
+        # The 128 resampled frames span the duration of the original clip:
+        duration_sec = count / max(effective_fps, 1.0)
         resampled_fs = TARGET_FRAMES / max(duration_sec, 0.5)
 
         # 5. Format tensor: (B, 3, T, H, W)

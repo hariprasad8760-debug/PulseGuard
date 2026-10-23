@@ -7,6 +7,7 @@ class RPPGFrameItem(BaseModel):
     """Timestamped cropped facial ROI or full frame in base64 format."""
     frame_base64: str = Field(..., description="Base64 encoded JPEG or PNG image")
     timestamp_ms: Optional[float] = Field(None, description="Client capture timestamp in milliseconds")
+    bounding_box: Optional[dict] = Field(None, description="Optional face bounding box {x, y, width, height} normalized")
 
 
 class RPPGAnalyzeRequest(BaseModel):

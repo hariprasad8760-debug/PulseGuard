@@ -36,11 +36,13 @@ async def analyze_rppg(payload: RPPGAnalyzeRequest) -> RPPGAnalyzeResponse:
     timestamps = [f.timestamp_ms for f in payload.frames if f.timestamp_ms is not None]
     if len(timestamps) != len(b64_list):
         timestamps = None
+    bounding_boxes = [f.bounding_box for f in payload.frames]
 
     result = rppg_service.analyze_sequence(
         frame_base64_list=b64_list,
         client_fps=payload.fps,
-        timestamps_ms=timestamps
+        timestamps_ms=timestamps,
+        bounding_boxes=bounding_boxes
     )
 
     if result.get("status") == "error":

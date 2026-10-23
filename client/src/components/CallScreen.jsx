@@ -117,11 +117,13 @@ export default function CallScreen({ roomData, onLeaveCall }) {
 
           // Accumulate valid face frame in rPPG buffer
           if (response.data.face_detected) {
+            const primaryBbox = response.data.faces?.[0]?.bounding_box || null;
             rppgBufferRef.current.push({
               frame_base64: frameBase64,
-              timestamp_ms: captureTs
+              timestamp_ms: captureTs,
+              bounding_box: primaryBbox
             });
-            // Keep buffer capped at last 32 frames (approx 16-24s of temporal window at interval)
+            // Keep buffer capped at last 32 frames
             if (rppgBufferRef.current.length > 32) {
               rppgBufferRef.current.shift();
             }
@@ -137,7 +139,16 @@ export default function CallScreen({ roomData, onLeaveCall }) {
                 .then((rppgRes) => {
                   if (rppgRes.success && rppgRes.data) {
                     setRppgData(rppgRes.data);
-                    setRppgStatus(rppgRes.data.signal_available ? 'available' : 'unavailable');
+                    // Update status: if status is success and signal_available is true -> available;
+                    // if status is success and signal_available is false -> inconclusive/processing;
+                    // if status is insufficient_data -> collecting
+                    if (rppgRes.data.status === 'insufficient_data') {
+                      setRppgStatus('collecting');
+                    } else if (rppgRes.data.signal_available) {
+                      setRppgStatus('available');
+                    } else {
+                      setRppgStatus('unavailable');
+                    }
                   } else {
                     setRppgStatus('error');
                   }

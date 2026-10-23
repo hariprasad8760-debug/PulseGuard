@@ -280,12 +280,14 @@ export default function SecurityPanel({
                 <span className="font-semibold text-slate-800 dark:text-slate-200">
                   {backendState === 'unavailable'
                     ? 'Unavailable'
-                    : rppgStatus === 'collecting'
-                    ? 'Collecting frames...'
-                    : rppgStatus === 'analyzing'
-                    ? 'Processing 3D-CNN...'
                     : rppgData?.signal_available
                     ? 'Available'
+                    : rppgStatus === 'analyzing'
+                    ? 'Processing 3D-CNN...'
+                    : rppgStatus === 'collecting'
+                    ? 'Collecting frames...'
+                    : rppgData?.status === 'insufficient_data'
+                    ? 'Collecting frames...'
                     : 'Unavailable'}
                 </span>
               </div>
@@ -321,12 +323,20 @@ export default function SecurityPanel({
                     : rppgStatus === 'collecting'
                     ? 'Collecting sequence'
                     : rppgData?.status === 'success'
-                    ? 'Completed'
+                    ? (rppgData.signal_available ? 'Completed (Pulse detected)' : 'Completed (Evaluating)')
+                    : rppgData?.status === 'insufficient_data'
+                    ? 'Collecting sequence'
                     : rppgStatus === 'error'
                     ? 'Error'
-                    : 'Awaiting call'}
+                    : 'Awaiting frames'}
                 </span>
               </div>
+
+              {rppgData?.message && (
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 italic pt-0.5">
+                  {rppgData.message}
+                </div>
+              )}
             </div>
 
             {/* Micro Waveform Preview if available */}
