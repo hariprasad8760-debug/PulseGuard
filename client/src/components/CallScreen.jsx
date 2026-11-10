@@ -37,9 +37,12 @@ export default function CallScreen({ roomData, onLeaveCall }) {
   const [rppgStatus, setRppgStatus] = useState('idle'); // 'idle' | 'collecting' | 'analyzing' | 'available' | 'unavailable' | 'error'
   const rppgBufferRef = useRef([]); // Stores sequence of { frame_base64, timestamp_ms }
   const isRppgAnalyzingRef = useRef(false);
+  const latestFaceBboxRef = useRef(null);
+  const isFacePresentRef = useRef(false);
 
   const hiddenVideoRef = useRef(null);
   const hiddenCanvasRef = useRef(null);
+  const rppgCanvasRef = useRef(null);
   const isAnalyzingRef = useRef(false);
   
   // Choose which screen will be full screen: null (default grid) | 'local' | peerId
@@ -70,13 +73,15 @@ export default function CallScreen({ roomData, onLeaveCall }) {
     onCallEnded: onLeaveCall
   });
 
-  // Background Face Detection & Tracking loop (every 2.0s)
+  // Background Face Detection & Tracking + High-Frequency rPPG Collector loops
   useEffect(() => {
     if (!localStream || isCameraOff) {
       setFaceData(null);
       setAnalysisState('inconclusive');
       rppgBufferRef.current = [];
       setRppgStatus('idle');
+      isFacePresentRef.current = false;
+      latestFaceBboxRef.current = null;
       return;
     }
 
@@ -86,7 +91,8 @@ export default function CallScreen({ roomData, onLeaveCall }) {
       videoEl.play().catch(() => {});
     }
 
-    const intervalId = setInterval(async () => {
+    // 1. Face Detection & Tracking loop (runs every 1200ms)
+    const faceIntervalId = setInterval(async () => {
       if (isAnalyzingRef.current) return;
       if (!hiddenVideoRef.current || !hiddenCanvasRef.current) return;
       if (hiddenVideoRef.current.readyState < 2) return;
@@ -97,7 +103,7 @@ export default function CallScreen({ roomData, onLeaveCall }) {
         const ctx = canvas.getContext('2d');
         if (!ctx || video.videoWidth === 0 || video.videoHeight === 0) return;
 
-        // Downscaled 320x240 frame for optimal network latency and memory efficiency
+        // Downscaled 320x240 frame for face tracking
         canvas.width = 320;
         canvas.height = 240;
         ctx.drawImage(video, 0, 0, 320, 240);
@@ -113,73 +119,126 @@ export default function CallScreen({ roomData, onLeaveCall }) {
         if (response.success && response.data) {
           setFaceData(response.data);
           setLastAnalyzedAt(captureTs);
-          setAnalysisState(response.data.face_detected ? 'available' : 'inconclusive');
-
-          // Accumulate valid face frame in rPPG buffer
-          if (response.data.face_detected) {
-            const primaryBbox = response.data.faces?.[0]?.bounding_box || null;
-            rppgBufferRef.current.push({
-              frame_base64: frameBase64,
-              timestamp_ms: captureTs,
-              bounding_box: primaryBbox
-            });
-            // Keep buffer capped at last 32 frames
-            if (rppgBufferRef.current.length > 32) {
-              rppgBufferRef.current.shift();
-            }
-
-            if (rppgBufferRef.current.length < 16) {
-              setRppgStatus('collecting');
-            } else if (!isRppgAnalyzingRef.current) {
-              // Dispatch rPPG PhysNet 3D-CNN analysis every time buffer has >= 16 frames
-              isRppgAnalyzingRef.current = true;
-              setRppgStatus('analyzing');
-
-              analyzeRPPGSequence([...rppgBufferRef.current], null, roomCode)
-                .then((rppgRes) => {
-                  if (rppgRes.success && rppgRes.data) {
-                    setRppgData(rppgRes.data);
-                    // Update status: if status is success and signal_available is true -> available;
-                    // if status is success and signal_available is false -> inconclusive/processing;
-                    // if status is insufficient_data -> collecting
-                    if (rppgRes.data.status === 'insufficient_data') {
-                      setRppgStatus('collecting');
-                    } else if (rppgRes.data.signal_available) {
-                      setRppgStatus('available');
-                    } else {
-                      setRppgStatus('unavailable');
-                    }
-                  } else {
-                    setRppgStatus('error');
-                  }
-                })
-                .catch((err) => {
-                  console.warn('rPPG sequence analysis error:', err);
-                  setRppgStatus('error');
-                })
-                .finally(() => {
-                  isRppgAnalyzingRef.current = false;
-                });
-            }
-          } else {
-            // No face in current frame
-            setRppgStatus('unavailable');
+          const hasFace = Boolean(response.data.face_detected);
+          setAnalysisState(hasFace ? 'available' : 'inconclusive');
+          isFacePresentRef.current = hasFace;
+          if (hasFace && response.data.faces?.[0]?.bounding_box) {
+            latestFaceBboxRef.current = response.data.faces[0].bounding_box;
+          } else if (!hasFace) {
+            latestFaceBboxRef.current = null;
           }
         } else {
           setAnalysisState('unavailable');
-          setRppgStatus('unavailable');
+          isFacePresentRef.current = false;
         }
       } catch (err) {
         console.warn('Face detection frame capture error:', err);
         setAnalysisState('unavailable');
-        setRppgStatus('unavailable');
+        isFacePresentRef.current = false;
       } finally {
         isAnalyzingRef.current = false;
       }
-    }, 2000);
+    }, 1200);
+
+    // 2. High-Frequency rPPG Collector loop (every 100ms = 10 FPS)
+    const rppgIntervalId = setInterval(() => {
+      if (!isFacePresentRef.current) {
+        if (rppgBufferRef.current.length > 0 && !isRppgAnalyzingRef.current) {
+          if (rppgStatus !== 'idle' && rppgStatus !== 'collecting') {
+            setRppgStatus('collecting');
+          }
+        }
+        return;
+      }
+
+      const video = hiddenVideoRef.current;
+      const rppgCanvas = rppgCanvasRef.current;
+      if (!video || !rppgCanvas || video.readyState < 2) return;
+      if (video.videoWidth === 0 || video.videoHeight === 0) return;
+
+      const rppgCtx = rppgCanvas.getContext('2d');
+      if (!rppgCtx) return;
+
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      const bbox = latestFaceBboxRef.current;
+
+      // Crop directly to 64x64 matching PhysNet model requirements
+      rppgCanvas.width = 64;
+      rppgCanvas.height = 64;
+
+      if (bbox && bbox.width > 0 && bbox.height > 0) {
+        const padW = bbox.width * 0.1;
+        const padH = bbox.height * 0.1;
+        const sx = Math.max(0, (bbox.x - padW) * vw);
+        const sy = Math.max(0, (bbox.y - padH) * vh);
+        const sw = Math.min(vw - sx, (bbox.width + padW * 2) * vw);
+        const sh = Math.min(vh - sy, (bbox.height + padH * 2) * vh);
+
+        rppgCtx.drawImage(video, sx, sy, sw, sh, 0, 0, 64, 64);
+      } else {
+        const minDim = Math.min(vw, vh);
+        const sx = (vw - minDim) / 2;
+        const sy = (vh - minDim) / 2;
+        rppgCtx.drawImage(video, sx, sy, minDim, minDim, 0, 0, 64, 64);
+      }
+
+      const frameBase64 = rppgCanvas.toDataURL('image/jpeg', 0.7);
+      const captureTs = Date.now();
+
+      rppgBufferRef.current.push({
+        frame_base64: frameBase64,
+        timestamp_ms: captureTs
+      });
+
+      // Keep maximum sliding buffer of 24 frames (~2.4s)
+      if (rppgBufferRef.current.length > 24) {
+        rppgBufferRef.current.shift();
+      }
+
+      // Buffer status update & dispatch PhysNet analysis
+      if (rppgBufferRef.current.length < 18) {
+        if (!isRppgAnalyzingRef.current && rppgStatus !== 'collecting') {
+          setRppgStatus('collecting');
+        }
+      } else if (!isRppgAnalyzingRef.current) {
+        isRppgAnalyzingRef.current = true;
+        setRppgStatus('analyzing');
+
+        const sequenceSnapshot = [...rppgBufferRef.current];
+
+        analyzeRPPGSequence(sequenceSnapshot, 10.0, roomCode)
+          .then((rppgRes) => {
+            if (rppgRes.success && rppgRes.data) {
+              setRppgData(rppgRes.data);
+              if (rppgRes.data.status === 'insufficient_data') {
+                setRppgStatus('collecting');
+              } else if (rppgRes.data.signal_available) {
+                setRppgStatus('available');
+              } else {
+                setRppgStatus('unavailable');
+              }
+            } else {
+              setRppgStatus('error');
+            }
+          })
+          .catch((err) => {
+            console.warn('rPPG sequence analysis error:', err);
+            setRppgStatus('error');
+          })
+          .finally(() => {
+            isRppgAnalyzingRef.current = false;
+            // Keep recent 8 frames so next ~1 sec of capture provides a fresh full sequence
+            if (rppgBufferRef.current.length > 8) {
+              rppgBufferRef.current = rppgBufferRef.current.slice(-8);
+            }
+          });
+      }
+    }, 100);
 
     return () => {
-      clearInterval(intervalId);
+      clearInterval(faceIntervalId);
+      clearInterval(rppgIntervalId);
       isAnalyzingRef.current = false;
       isRppgAnalyzingRef.current = false;
     };
@@ -504,6 +563,13 @@ export default function CallScreen({ roomData, onLeaveCall }) {
       />
       <canvas
         ref={hiddenCanvasRef}
+        style={{ display: 'none' }}
+        aria-hidden="true"
+      />
+      <canvas
+        ref={rppgCanvasRef}
+        width={64}
+        height={64}
         style={{ display: 'none' }}
         aria-hidden="true"
       />

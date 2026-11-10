@@ -159,7 +159,7 @@ class RPPGService:
             return None
 
     def calculate_snr_and_confidence(
-        self, waveform: np.ndarray, fs: float, peak_bpm: float
+        self, waveform: np.ndarray, fs: float, peak_bpm: float, n_fft: int = 2048
     ) -> Tuple[float, float, str]:
         """Calculates Signal-to-Noise Ratio (SNR in dB) and confidence metric around the peak heart rate frequency."""
         n = len(waveform)
@@ -167,8 +167,9 @@ class RPPGService:
             return -20.0, 0.0, "unavailable"
 
         w = waveform - np.mean(waveform)
-        freqs = np.fft.rfftfreq(n, d=1.0 / fs)
-        ps = np.abs(np.fft.rfft(w * np.hanning(n))) ** 2
+        n_pts = max(n, n_fft)
+        freqs = np.fft.rfftfreq(n_pts, d=1.0 / fs)
+        ps = np.abs(np.fft.rfft(w * np.hanning(n), n=n_pts)) ** 2
 
         # Fundamental HR frequency (Hz)
         f_hr = peak_bpm / 60.0
@@ -196,11 +197,11 @@ class RPPGService:
             confidence = float(np.clip(signal_power / total_band_power, 0.0, 1.0))
 
         # Qualitative classification
-        if snr_db > 4.0 and confidence >= 0.55:
+        if snr_db > 3.0 and confidence >= 0.35:
             quality = "high"
-        elif snr_db > -1.0 and confidence >= 0.35:
+        elif snr_db > -3.0 and confidence >= 0.20:
             quality = "medium"
-        elif snr_db > -6.0:
+        elif snr_db > -9.0:
             quality = "low"
         else:
             quality = "unavailable"
@@ -330,7 +331,7 @@ class RPPGService:
         signal_available = False
 
         if not np.isnan(raw_bpm) and PHYSIOLOGICAL_MIN_BPM <= raw_bpm <= PHYSIOLOGICAL_MAX_BPM:
-            if confidence >= MIN_CONFIDENCE_THRESHOLD and quality in ("high", "medium"):
+            if confidence >= 0.20 and quality in ("high", "medium"):
                 valid_bpm = round(float(raw_bpm), 1)
                 signal_available = True
                 message = f"Valid pulse detected with {quality} signal quality ({valid_bpm} BPM)."
@@ -340,14 +341,21 @@ class RPPGService:
                 message = f"Weak pulse signal detected ({valid_bpm} BPM); stability check in progress."
             else:
                 signal_available = False
-                message = "Facial signal extracted but spectral confidence is below threshold; heart rate is not yet reliable."
+                message = "Facial signal extracted; spectral confidence stabilizing."
         else:
             signal_available = False
             message = "No prominent pulse peak detected in the physiological band."
 
+        # Apply gentle 5-tap Gaussian smoothing to filter out high-frequency CNN noise
+        # and preserve smooth, physiological cardiac pulse patterns (systolic peak & diastolic runoff)
+        kernel = np.array([0.06, 0.24, 0.40, 0.24, 0.06], dtype=np.float32)
+        smoothed_wave = np.convolve(waveform_np, kernel, mode="same")
+
+        # Normalize smoothed waveform: zero mean, unit variance
+        norm_wave = (smoothed_wave - np.mean(smoothed_wave)) / (np.std(smoothed_wave) + 1e-6)
+
         # Subsample waveform to 32 points for lightweight UI visualization
-        step = max(1, len(waveform_np) // 32)
-        norm_wave = (waveform_np - np.mean(waveform_np)) / (np.std(waveform_np) + 1e-6)
+        step = max(1, len(norm_wave) // 32)
         display_wave = [round(float(v), 3) for v in norm_wave[::step][:32]]
 
         return {

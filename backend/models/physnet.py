@@ -68,16 +68,18 @@ def neg_pearson_loss(pred: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
 
 
 def hr_from_wave(wave: np.ndarray, fs: float,
-                 lo_hz: float = 0.7, hi_hz: float = 3.0) -> float:
+                 lo_hz: float = 0.7, hi_hz: float = 3.0, n_fft: int = 2048) -> float:
     """HR (bpm) = peak of the power spectrum in the physiological band.
-    fs = effective sampling rate of the waveform (clip_frames / clip_seconds)."""
+    fs = effective sampling rate of the waveform (clip_frames / clip_seconds).
+    n_fft = zero-padding size for smooth high-resolution frequency interpolation."""
     w = np.asarray(wave, dtype=np.float64)
     w = w - w.mean()
     n = len(w)
     if n < 4:
         return float("nan")
-    freqs = np.fft.rfftfreq(n, d=1.0 / fs)
-    ps = np.abs(np.fft.rfft(w * np.hanning(n))) ** 2
+    n_pts = max(n, n_fft)
+    freqs = np.fft.rfftfreq(n_pts, d=1.0 / fs)
+    ps = np.abs(np.fft.rfft(w * np.hanning(n), n=n_pts)) ** 2
     band = (freqs >= lo_hz) & (freqs <= hi_hz)
     if not band.any():
         return float("nan")
